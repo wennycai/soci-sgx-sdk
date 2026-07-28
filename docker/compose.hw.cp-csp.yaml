@@ -1,0 +1,73 @@
+services:
+  check:
+    image: "${SOCI_CP_IMAGE:-soci-sgx-cp:2.26}"
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.hw
+      target: cp-image
+    devices:
+      - "${SGX_ENCLAVE_DEVICE:-/dev/sgx_enclave}:/dev/sgx_enclave"
+    command: ["check"]
+
+  test:
+    image: "${SOCI_IMAGE:-soci-sgx-hw:2.26}"
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.hw
+      target: all-image
+    depends_on:
+      check:
+        condition: service_completed_successfully
+    devices:
+      - "${SGX_ENCLAVE_DEVICE:-/dev/sgx_enclave}:/dev/sgx_enclave"
+    command: ["test"]
+
+  provision:
+    image: "${SOCI_CP_IMAGE:-soci-sgx-cp:2.26}"
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.hw
+      target: cp-image
+    depends_on:
+      test:
+        condition: service_completed_successfully
+    devices:
+      - "${SGX_ENCLAVE_DEVICE:-/dev/sgx_enclave}:/dev/sgx_enclave"
+    volumes:
+      - "${SOCI_DATA_DIR:-../runtime/hw-dual}:/var/lib/soci"
+      - "${SOCI_RESULTS_DIR:-../results}:/opt/soci/results"
+    command: ["provision"]
+
+  csp:
+    image: "${SOCI_CSP_IMAGE:-soci-sgx-csp:2.26}"
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.hw
+      target: csp-image
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+    devices:
+      - "${SGX_ENCLAVE_DEVICE:-/dev/sgx_enclave}:/dev/sgx_enclave"
+    volumes:
+      - "${SOCI_DATA_DIR:-../runtime/hw-dual}:/var/lib/soci:ro"
+    expose: ["19090"]
+    command: ["csp"]
+
+  cp:
+    image: "${SOCI_CP_IMAGE:-soci-sgx-cp:2.26}"
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+      csp:
+        condition: service_started
+    devices:
+      - "${SGX_ENCLAVE_DEVICE:-/dev/sgx_enclave}:/dev/sgx_enclave"
+    volumes:
+      - "${SOCI_DATA_DIR:-../runtime/hw-dual}:/var/lib/soci:ro"
+      - "${SOCI_RESULTS_DIR:-../results}:/opt/soci/results"
+    environment:
+      CSP_HOST: csp
+      PROTOCOL_WARMUP: "${PROTOCOL_WARMUP:-20}"
+      PROTOCOL_SAMPLES: "${PROTOCOL_SAMPLES:-100}"
+    command: ["cp-benchmark"]

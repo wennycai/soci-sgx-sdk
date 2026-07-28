@@ -1,0 +1,12 @@
+{
+  "mode":"SIM",
+  "modulus_bits":3072,
+  "bigint_backend":"GMP 6.2.1 static x86_64 assembly (k8 baseline)",
+  "enclave":"./build/sim-release/soci_provisioning_enclave.signed.so",
+  "timing_scope":"host steady_clock wall time including ECALL transition",
+  "warmup":{"keygen":5,"decrypt":10},
+  "results":[
+    {"operation":"ENCLAVE_KEYGEN_SEAL_EXPORT","samples":30,"mean_ms":123.380732,"p50_ms":103.132186,"p95_ms":240.417301,"min_ms":43.757851,"max_ms":364.303019,"correct":true},
+    {"operation":"ENCLAVE_FULL_DECRYPT","samples":100,"mean_ms":13.992818,"p50_ms":13.772167,"p95_ms":15.056870,"min_ms":13.231112,"max_ms":15.794445,"correct":true}
+  ]
+}

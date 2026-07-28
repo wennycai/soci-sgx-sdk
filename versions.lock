@@ -1,0 +1,13 @@
+ubuntu=22.04
+architecture=x86_64
+intel_sgx_sdk=2.26
+gcc=11.4.0
+cmake=3.22.1
+python=3.10.18
+openjdk=1.8.0_492
+gmp=6.2.1
+gmp_sgx_profile=x86_64-k8-static-assembly
+gmp_source_sha256=fd4829912cddd12f84181c3451cc752be224643e87fac497b69edddadc49b4f2
+pybind11=2.13.6
+openssl=3.0.2
+docker_base=ubuntu:22.04@sha256:3f85b7caad41a95462cf5b787d8a04604c8262cdcdf9a472b8c52ef83375fe15

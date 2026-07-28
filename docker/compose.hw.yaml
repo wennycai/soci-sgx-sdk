@@ -1,0 +1,6 @@
+services:
+  test:
+    build: {context: .., dockerfile: docker/Dockerfile}
+    devices: ["/dev/sgx_enclave:/dev/sgx_enclave", "/dev/sgx_provision:/dev/sgx_provision"]
+    environment: {SOCI_SGX_MODE: HW}
+    command: ["bash","-lc","scripts/build_hw.sh && scripts/test_hw.sh"]

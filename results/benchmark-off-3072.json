@@ -1,0 +1,14 @@
+{
+  "mode":"OFF",
+  "modulus_bits":3072,
+  "note":"experimental secure operations use decrypt-compute-encrypt and are OFF reference-only",
+  "results":[
+    {"operation":"KEYGEN","samples":3,"mean_ms":79.288603,"p50_ms":81.549335,"p95_ms":81.549335,"min_ms":49.134432,"max_ms":107.182041,"correct":true},
+    {"operation":"ENCRYPT","samples":50,"mean_ms":26.929443,"p50_ms":26.221935,"p95_ms":28.430423,"min_ms":25.490073,"max_ms":40.228450,"correct":true},
+    {"operation":"DECRYPT","samples":50,"mean_ms":26.832080,"p50_ms":26.546614,"p95_ms":28.865952,"min_ms":25.338315,"max_ms":30.867375,"correct":true},
+    {"operation":"SMUL","samples":50,"mean_ms":81.151103,"p50_ms":79.373079,"p95_ms":85.937699,"min_ms":75.837776,"max_ms":123.603004,"correct":true},
+    {"operation":"SCMP","samples":50,"mean_ms":80.362698,"p50_ms":78.451079,"p95_ms":83.063678,"min_ms":75.333123,"max_ms":120.350441,"correct":true},
+    {"operation":"SABS","samples":50,"mean_ms":53.639636,"p50_ms":52.452434,"p95_ms":58.018868,"min_ms":50.999066,"max_ms":77.738246,"correct":true},
+    {"operation":"SDIV","samples":50,"mean_ms":163.979595,"p50_ms":159.306554,"p95_ms":209.755508,"min_ms":152.586567,"max_ms":213.150917,"correct":true}
+  ]
+}

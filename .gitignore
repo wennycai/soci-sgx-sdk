@@ -1,0 +1,22 @@
+/build/
+/runtime/
+/dist/
+/.deps/
+/docker/sgx_default_qcnl.conf
+*.so
+*.class
+
+# 测试报告生成器产物 (results/*.json 基准数据仍纳入版本管理)
+/results/report-artifacts/
+/results/test-report.md
+/results/test-report.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Claude settings
+.claude/settings.local.json*
+
+# CTest 输出
+/Testing/

@@ -1,0 +1,26 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {"major": 3, "minor": 22, "patch": 1},
+  "configurePresets": [
+    {"name":"base","hidden":true,"generator":"Unix Makefiles","binaryDir":"${sourceDir}/build/${presetName}"},
+    {"name":"off-debug","inherits":"base","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","SOCI_SGX_MODE":"OFF"}},
+    {"name":"off-asan","inherits":"off-debug","cacheVariables":{"CMAKE_CXX_FLAGS":"-fsanitize=address,undefined -fno-omit-frame-pointer","CMAKE_EXE_LINKER_FLAGS":"-fsanitize=address,undefined"}},
+    {"name":"off-benchmark","inherits":"base","cacheVariables":{"CMAKE_BUILD_TYPE":"Release","SOCI_SGX_MODE":"OFF","SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS":"ON","SOCI_BUILD_PYTHON":"OFF","SOCI_BUILD_JAVA":"OFF"}},
+    {"name":"sim-debug","inherits":"base","cacheVariables":{"CMAKE_BUILD_TYPE":"Debug","SOCI_SGX_MODE":"SIM"}},
+    {"name":"sim-release","inherits":"base","cacheVariables":{"CMAKE_BUILD_TYPE":"Release","SOCI_SGX_MODE":"SIM"}},
+    {"name":"hw-release","inherits":"base","cacheVariables":{"CMAKE_BUILD_TYPE":"Release","SOCI_SGX_MODE":"HW"}}
+  ],
+  "buildPresets": [
+    {"name":"off-debug","configurePreset":"off-debug"},{"name":"off-asan","configurePreset":"off-asan"},
+    {"name":"off-benchmark","configurePreset":"off-benchmark"},
+    {"name":"sim-debug","configurePreset":"sim-debug"},{"name":"sim-release","configurePreset":"sim-release"},
+    {"name":"hw-release","configurePreset":"hw-release"}
+  ],
+  "testPresets": [
+    {"name":"off-debug","configurePreset":"off-debug","output":{"outputOnFailure":true}},
+    {"name":"off-asan","configurePreset":"off-asan","environment":{"ASAN_OPTIONS":"detect_leaks=0"},"output":{"outputOnFailure":true}},
+    {"name":"sim-debug","configurePreset":"sim-debug","output":{"outputOnFailure":true}},
+    {"name":"sim-release","configurePreset":"sim-release","output":{"outputOnFailure":true}},
+    {"name":"hw-release","configurePreset":"hw-release","output":{"outputOnFailure":true}}
+  ]
+}

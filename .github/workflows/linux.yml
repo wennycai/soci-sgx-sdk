@@ -1,0 +1,10 @@
+name: linux
+on: [push, pull_request]
+jobs:
+  off:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y ninja-build libgmp-dev libssl-dev
+      - run: scripts/build_off.sh && scripts/test_off.sh
+      - run: cmake --preset off-asan && cmake --build --preset off-asan && ctest --preset off-asan

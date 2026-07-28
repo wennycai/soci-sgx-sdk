@@ -1,0 +1,9 @@
+name: sgx-hardware
+on: {workflow_dispatch: {}}
+jobs:
+  hardware:
+    runs-on: [self-hosted, linux, x64, sgx]
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/check_sgx_host.sh
+      - run: scripts/build_hw.sh && scripts/test_hw.sh

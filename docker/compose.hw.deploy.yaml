@@ -1,0 +1,15 @@
+services:
+  soci-hw:
+    image: "${SOCI_IMAGE:-soci-sgx-hw:2.26}"
+    container_name: soci-sgx-hw
+    devices:
+      - "${SGX_ENCLAVE_DEVICE:-/dev/sgx_enclave}:/dev/sgx_enclave"
+    volumes:
+      - "${SOCI_DATA_DIR:-./runtime/hw}:/var/lib/soci"
+      - "${SOCI_RESULTS_DIR:-./results}:/opt/soci/results"
+    environment:
+      DECRYPT_SAMPLES: "${DECRYPT_SAMPLES:-100}"
+      KEYGEN_SAMPLES: "${KEYGEN_SAMPLES:-30}"
+      DECRYPT_WARMUP: "${DECRYPT_WARMUP:-10}"
+      KEYGEN_WARMUP: "${KEYGEN_WARMUP:-20}"
+    command: ["test"]

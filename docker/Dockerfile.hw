@@ -1,0 +1,60 @@
+FROM ubuntu:22.04 AS soci-runtime
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG SGX_SDK_URL=https://download.01.org/intel-sgx/sgx-dcap/1.23/linux/distro/ubuntu22.04-server/sgx_linux_x64_sdk_2.26.100.0.bin
+ARG DCAP_REPO_URL=https://download.01.org/intel-sgx/sgx-dcap/1.23/linux/distro/ubuntu22.04-server/sgx_debian_local_repo.tgz
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential gcc-11 g++-11 cmake ninja-build m4 file pkg-config \
+    libgmp-dev libssl-dev ca-certificates wget openssl && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN wget -q "$SGX_SDK_URL" -O /tmp/sgx-sdk.bin && \
+    chmod +x /tmp/sgx-sdk.bin && \
+    echo yes | /tmp/sgx-sdk.bin --prefix /opt/intel && \
+    rm /tmp/sgx-sdk.bin
+
+# Install only the HW enclave loader/runtime paired with SDK 2.26. Quote
+# generation, quote verification, QPL/PCCS and AESM are intentionally absent.
+RUN wget -q "$DCAP_REPO_URL" -O /tmp/sgx-repo.tgz && \
+    mkdir -p /opt/intel/dcap-repo && \
+    tar -xzf /tmp/sgx-repo.tgz -C /opt/intel/dcap-repo --strip-components=1 && \
+    echo "deb [trusted=yes arch=amd64] file:/opt/intel/dcap-repo jammy main" \
+      > /etc/apt/sources.list.d/intel-sgx.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
+      libsgx-enclave-common libsgx-urts && \
+    rm -rf /var/lib/apt/lists/* /tmp/sgx-repo.tgz
+
+ENV SGX_SDK=/opt/intel/sgxsdk
+WORKDIR /workspace
+COPY . .
+RUN GMP_SOURCE_ARCHIVE=/workspace/third_party/gmp-6.2.1.tar.xz \
+      /workspace/scripts/build_gmp_sgx.sh /opt/soci/gmp-sgx && \
+    CMAKE_PRESET_NAME=hw-release cmake --preset hw-release \
+      -DGMP_SGX_ROOT=/opt/soci/gmp-sgx && \
+    cmake --build --preset hw-release --parallel "$(nproc)" && \
+    mkdir -p /opt/soci/bin /opt/soci/enclaves /opt/soci/results /var/lib/soci && \
+    cp build/hw-release/soci_sgx_lifecycle_test \
+       build/hw-release/soci_sgx_crypto_benchmark \
+       build/hw-release/soci_sgx_threshold_test \
+       build/hw-release/soci_threshold_runtime /opt/soci/bin/ && \
+    cp build/hw-release/*_enclave.signed.so /opt/soci/enclaves/ && \
+    cp docker/hw-entrypoint.sh /usr/local/bin/soci-hw-entrypoint && \
+    chmod +x /usr/local/bin/soci-hw-entrypoint
+
+VOLUME ["/var/lib/soci", "/opt/soci/results"]
+WORKDIR /opt/soci
+ENTRYPOINT ["/usr/local/bin/soci-hw-entrypoint"]
+CMD ["test"]
+
+# CP image owns the provisioning and CP enclave images, but never the CSP one.
+FROM soci-runtime AS cp-image
+RUN rm -f /opt/soci/enclaves/soci_csp_enclave.signed.so
+
+# CSP image owns only the CSP enclave image.
+FROM soci-runtime AS csp-image
+RUN rm -f /opt/soci/enclaves/soci_cp_enclave.signed.so \
+          /opt/soci/enclaves/soci_provisioning_enclave.signed.so
+
+# Keep the historical single-image workflow as the default Docker target.
+FROM soci-runtime AS all-image

@@ -1,0 +1,112 @@
+cmake_minimum_required(VERSION 3.22)
+project(soci_sgx_sdk VERSION 0.1.0 LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(SOCI_SGX_MODE "OFF" CACHE STRING "OFF, SIM or HW")
+set_property(CACHE SOCI_SGX_MODE PROPERTY STRINGS OFF SIM HW)
+option(SOCI_BUILD_PYTHON "Build pybind11 module" ON)
+option(SOCI_BUILD_JAVA "Build JNI library" ON)
+option(SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS "Enable reference-only protocols" OFF)
+
+if(NOT SOCI_SGX_MODE MATCHES "^(OFF|SIM|HW)$")
+  message(FATAL_ERROR "SOCI_SGX_MODE must be OFF, SIM, or HW")
+endif()
+if(NOT SOCI_SGX_MODE STREQUAL "OFF")
+  if(NOT DEFINED ENV{SGX_SDK})
+    set(ENV{SGX_SDK} /opt/intel/sgxsdk)
+  endif()
+  if(NOT EXISTS "$ENV{SGX_SDK}/bin/x64/sgx_edger8r")
+    message(FATAL_ERROR "Intel SGX SDK 2.26 is required for ${SOCI_SGX_MODE}; refusing fallback to OFF")
+  endif()
+  include(cmake/IntelSGX.cmake)
+endif()
+
+find_path(GMP_INCLUDE_DIR gmpxx.h REQUIRED)
+find_library(GMPXX_LIBRARY gmpxx REQUIRED)
+find_library(GMP_LIBRARY gmp REQUIRED)
+find_package(OpenSSL REQUIRED)
+if(NOT SOCI_SGX_MODE STREQUAL "OFF")
+  target_include_directories(soci_sgx_crypto_benchmark PRIVATE ${GMP_INCLUDE_DIR})
+  target_link_libraries(soci_sgx_crypto_benchmark PRIVATE ${GMPXX_LIBRARY} ${GMP_LIBRARY})
+  target_compile_definitions(soci_sgx_crypto_benchmark PRIVATE
+    SOCI_SGX_BENCHMARK_MODE="${SOCI_SGX_MODE}")
+  target_include_directories(soci_sgx_threshold_test PRIVATE ${GMP_INCLUDE_DIR})
+  target_link_libraries(soci_sgx_threshold_test PRIVATE ${GMPXX_LIBRARY} ${GMP_LIBRARY})
+  target_include_directories(soci_threshold_runtime PRIVATE ${GMP_INCLUDE_DIR})
+  target_link_libraries(soci_threshold_runtime PRIVATE ${GMPXX_LIBRARY} ${GMP_LIBRARY})
+endif()
+
+add_library(soci_sdk SHARED
+  src/crypto.cpp src/serialization.cpp src/runtime.cpp src/c_api.cpp)
+target_include_directories(soci_sdk PUBLIC include PRIVATE src ${GMP_INCLUDE_DIR})
+target_link_libraries(soci_sdk PRIVATE ${GMPXX_LIBRARY} ${GMP_LIBRARY} OpenSSL::Crypto)
+target_compile_definitions(soci_sdk PRIVATE SOCI_SGX_MODE="${SOCI_SGX_MODE}"
+  SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS=$<BOOL:${SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS}>)
+set_target_properties(soci_sdk PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION 0)
+
+add_executable(soci_cp_service services/service_main.cpp)
+target_compile_definitions(soci_cp_service PRIVATE SOCI_SERVICE_ROLE="CP")
+target_link_libraries(soci_cp_service PRIVATE soci_sdk)
+add_executable(soci_csp_service services/service_main.cpp)
+target_compile_definitions(soci_csp_service PRIVATE SOCI_SERVICE_ROLE="CSP")
+target_link_libraries(soci_csp_service PRIVATE soci_sdk)
+add_executable(soci_cpp_example examples/cpp/basic.cpp)
+target_link_libraries(soci_cpp_example PRIVATE soci_sdk)
+add_executable(soci_benchmark benchmark/performance.cpp)
+target_link_libraries(soci_benchmark PRIVATE soci_sdk)
+
+if(SOCI_BUILD_PYTHON)
+  find_package(pybind11 CONFIG QUIET)
+  if(pybind11_FOUND)
+    pybind11_add_module(_soci bindings/python/module.cpp)
+    target_link_libraries(_soci PRIVATE soci_sdk)
+    install(TARGETS _soci LIBRARY DESTINATION soci)
+  else()
+    message(STATUS "pybind11 not found; Python extension skipped")
+  endif()
+endif()
+if(SOCI_BUILD_JAVA)
+  find_package(JNI QUIET)
+  if(JNI_FOUND)
+    add_library(soci_jni SHARED bindings/java/native/soci_jni.cpp)
+    target_include_directories(soci_jni PRIVATE ${JNI_INCLUDE_DIRS})
+    target_link_libraries(soci_jni PRIVATE soci_sdk)
+  else()
+    message(STATUS "JNI headers not found; JNI library skipped")
+  endif()
+endif()
+
+enable_testing()
+add_executable(soci_tests tests/test_sdk.cpp)
+target_link_libraries(soci_tests PRIVATE soci_sdk)
+if(SOCI_SGX_MODE STREQUAL "OFF")
+  add_test(NAME soci_tests COMMAND soci_tests)
+else()
+  add_test(NAME soci_sgx_cp_lifecycle COMMAND soci_sgx_lifecycle_test
+    "${CMAKE_BINARY_DIR}/soci_cp_enclave.signed.so" "${SOCI_SGX_MODE}")
+  add_test(NAME soci_sgx_csp_lifecycle COMMAND soci_sgx_lifecycle_test
+    "${CMAKE_BINARY_DIR}/soci_csp_enclave.signed.so" "${SOCI_SGX_MODE}")
+  add_test(NAME soci_sgx_crypto_correctness COMMAND soci_sgx_crypto_benchmark
+    "${CMAKE_BINARY_DIR}/soci_provisioning_enclave.signed.so" 3)
+  add_test(NAME soci_sgx_threshold_correctness COMMAND soci_sgx_threshold_test
+    "${CMAKE_BINARY_DIR}/soci_provisioning_enclave.signed.so"
+    "${CMAKE_BINARY_DIR}/soci_cp_enclave.signed.so"
+    "${CMAKE_BINARY_DIR}/soci_csp_enclave.signed.so" "${SOCI_SGX_MODE}")
+  set_tests_properties(soci_sgx_crypto_correctness PROPERTIES TIMEOUT 600)
+  set_tests_properties(soci_sgx_threshold_correctness PROPERTIES TIMEOUT 600)
+  if(SOCI_SGX_MODE STREQUAL "SIM")
+    set_tests_properties(
+      soci_sgx_cp_lifecycle soci_sgx_csp_lifecycle soci_sgx_crypto_correctness
+      soci_sgx_threshold_correctness
+      PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$ENV{SGX_SDK}/lib64")
+  endif()
+endif()
+
+install(TARGETS soci_sdk soci_cp_service soci_csp_service
+  LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+install(DIRECTORY include/ DESTINATION include)
+
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/build-manifest.json" CONTENT
+"{\n  \"project\":\"soci-sgx-sdk\",\n  \"version\":\"${PROJECT_VERSION}\",\n  \"cmake_preset\":\"$ENV{CMAKE_PRESET_NAME}\",\n  \"soci_sgx_mode\":\"${SOCI_SGX_MODE}\",\n  \"compiler\":\"${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}\",\n  \"sgx_sdk\":\"2.26 (required for SIM/HW)\",\n  \"source_revision\":\"$ENV{GIT_COMMIT}\",\n  \"container_image_digest\":\"$ENV{CONTAINER_IMAGE_DIGEST}\"\n}\n")

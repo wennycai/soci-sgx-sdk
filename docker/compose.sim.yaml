@@ -1,0 +1,5 @@
+services:
+  test:
+    build: {context: .., dockerfile: docker/Dockerfile}
+    environment: {SOCI_SGX_MODE: SIM}
+    command: ["bash","-lc","scripts/build_sim.sh && scripts/test_sim.sh"]

@@ -1,0 +1,8 @@
+build
+dist
+.deps
+runtime
+results
+.git
+*.so
+*.class
