@@ -285,6 +285,16 @@ def fmt_ms(v):
         return str(v)
 
 
+def fmt_us(v):
+    """格式化微秒值（单位由表头 _us 后缀指示）。"""
+    if v is None:
+        return "-"
+    try:
+        return f"{float(v):.2f}"
+    except (TypeError, ValueError):
+        return str(v)
+
+
 def fmt_bytes(n):
     try:
         n = float(n)
@@ -552,13 +562,25 @@ def render_md(r):
         for b in r["benchmarks"]:
             L.append(f"### `{b['file']}`\n")
             data = b["data"]
-            if isinstance(data, dict) and isinstance(data.get("results"), list):
-                meta = {k: v for k, v in data.items() if k != "results"}
+            # 识别基准结果列表: results(单镜像) 或 metrics(cp-csp 协议)；
+            # 都没有时，含 operation 的扁平单条记录(如 keygen-hw)当作 1 行表格
+            results = None
+            meta = {}
+            if isinstance(data, dict):
+                for _key in ("results", "metrics"):
+                    if isinstance(data.get(_key), list):
+                        results = data[_key]
+                        meta = {k: v for k, v in data.items() if k != _key}
+                        break
+                if results is None and "operation" in data:
+                    results = [data]
+            elif isinstance(data, list):
+                results = data
+            if results is not None:
                 if meta:
                     for k, v in meta.items():
                         L.append(f"- {k}: `{v}`")
                     L.append("")
-                results = data["results"]
                 # 自适应列: 收集所有结果项的键，按优先顺序排列，未知键追加在末尾
                 # (cp-csp-benchmark-hw 含 cp_enclave_time/csp_roundtrip 等额外列)
                 all_keys = []
@@ -567,10 +589,13 @@ def render_md(r):
                         for k in item:
                             if k not in all_keys:
                                 all_keys.append(k)
-                preferred = ["operation", "samples", "mean_ms", "p50_ms", "p95_ms",
-                             "min_ms", "max_ms", "cp_enclave_time_ms",
-                             "csp_roundtrip_ms", "csp_roundtrip_time_ms",
-                             "cp_time_ms", "correct"]
+                preferred = ["operation", "mode", "role", "security", "security_bits",
+                             "modulus_bits", "samples", "warmup", "milliseconds",
+                             "mean_ms", "p50_ms", "p95_ms", "min_ms", "max_ms",
+                             "mean_us", "p50_us", "p95_us",
+                             "cp_enclave_mean_us", "csp_roundtrip_mean_us",
+                             "cp_enclave_time_ms", "csp_roundtrip_ms",
+                             "csp_roundtrip_time_ms", "cp_time_ms", "correct"]
                 headers = [k for k in preferred if k in all_keys] + \
                           [k for k in all_keys if k not in preferred]
                 rows = []
@@ -579,8 +604,10 @@ def render_md(r):
                     for h in headers:
                         if h == "correct":
                             row.append(status_badge("passed" if item.get("correct") else "failed"))
-                        elif h.endswith("_ms"):
+                        elif h == "milliseconds" or h.endswith("_ms"):
                             row.append(fmt_ms(item.get(h)))
+                        elif h.endswith("_us"):
+                            row.append(fmt_us(item.get(h)))
                         else:
                             v = item.get(h, "—")
                             row.append(str(v) if v is not None else "—")
