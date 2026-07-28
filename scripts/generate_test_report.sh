@@ -21,6 +21,7 @@ MODES="off,sim,hw"
 COLLECT_ONLY=0
 RUN_BENCHMARK=1
 OUTPUT_DIR="results"
+NO_NATIVE=0
 
 usage() {
   cat <<'EOF'
@@ -30,6 +31,8 @@ Options:
   --modes <csv>       要执行的模式，逗号分隔 (off,sim,hw)，默认全部
   --collect-only      不执行任何构建/测试，仅汇总已有产物生成报告
   --no-benchmark      跳过性能基准测试
+  --no-native         强制 SIM/HW 走 dist 镜像，不使用本机 SGX SDK 原生构建
+                      (镜像部署、无源码的内网服务器用；等价于 SOCI_NO_NATIVE=1)
   --output <dir>      报告输出目录 (默认 results)
   -h, --help          显示本帮助
 
@@ -50,6 +53,7 @@ while [[ $# -gt 0 ]]; do
     --modes)        MODES="${2:-}"; shift 2 ;;
     --collect-only) COLLECT_ONLY=1; shift ;;
     --no-benchmark) RUN_BENCHMARK=0; shift ;;
+    --no-native)    NO_NATIVE=1; shift ;;
     --output)       OUTPUT_DIR="${2:-}"; shift 2 ;;
     -h|--help)      usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -58,6 +62,7 @@ done
 
 [[ -n "$MODES" ]] || { echo "--modes 不能为空" >&2; exit 2; }
 [[ -n "$OUTPUT_DIR" ]] || { echo "--output 不能为空" >&2; exit 2; }
+[[ "${SOCI_NO_NATIVE:-0}" == "1" ]] && NO_NATIVE=1
 
 mkdir -p "$OUTPUT_DIR/report-artifacts"
 ARTIFACTS_DIR="$OUTPUT_DIR/report-artifacts"
@@ -216,8 +221,8 @@ run_off() {
 run_sim() {
   echo "==> SIM 模式"
   if (( COLLECT_ONLY )); then record_skip sim "collect-only"; return 0; fi
-  # 1) 本地有 SGX SDK -> 原生 SIM
-  if [[ -x "$SGX_SDK/bin/x64/sgx_edger8r" ]]; then
+  # 1) 本地有 SGX SDK -> 原生 SIM  (--no-native / SOCI_NO_NATIVE=1 时跳过，改用镜像)
+  if (( ! NO_NATIVE )) && [[ -x "$SGX_SDK/bin/x64/sgx_edger8r" ]]; then
     echo "  本地检测到 SGX SDK -> 原生 SIM"
     clean_stale_cache build/sim-release
     run_step sim build 'CMAKE_PRESET_NAME=sim-release cmake --preset sim-release && cmake --build --preset sim-release'
@@ -231,7 +236,11 @@ run_sim() {
   #    可信 GMP /opt/soci/gmp-sgx；离线、无需 SGX 设备，比 compose.sim.yaml 快得多)
   local hw_image="${SOCI_IMAGE:-soci-sgx-hw:2.26}"
   if command -v docker >/dev/null 2>&1 && docker image inspect "$hw_image" >/dev/null 2>&1; then
-    echo "  无本地 SGX SDK；使用已加载的 dist 镜像 $hw_image 运行 SIM (离线，无需 SGX 设备)"
+    if (( NO_NATIVE )); then
+      echo "  --no-native: 跳过原生构建，使用已加载的 dist 镜像 $hw_image 运行 SIM (离线，无需 SGX 设备)"
+    else
+      echo "  无本地 SGX SDK；使用已加载的 dist 镜像 $hw_image 运行 SIM (离线，无需 SGX 设备)"
+    fi
     local results_vol="${PROJECT_DIR}/results:/workspace/results"
     local bench_cmd=""
     if (( RUN_BENCHMARK )); then
@@ -266,7 +275,7 @@ run_hw() {
     record_skip hw "宿主无 /dev/sgx_enclave（或 /dev/sgx/enclave）；HW Enclave 测试需要 SGX 硬件"
     return 0
   fi
-  if [[ -x "$SGX_SDK/bin/x64/sgx_edger8r" ]]; then
+  if (( ! NO_NATIVE )) && [[ -x "$SGX_SDK/bin/x64/sgx_edger8r" ]]; then
     echo "  本地检测到 SGX SDK 与设备 -> 原生 HW"
     run_step hw check 'scripts/check_sgx_host.sh'
     clean_stale_cache build/hw-release
@@ -282,7 +291,10 @@ run_hw() {
     record_skip hw "有 SGX 设备但无本地 SGX SDK 且无 docker；无法运行 HW"
     return 0
   fi
-  echo "  检测到 SGX 设备 -> 经 dist 镜像 (dist/compose.hw.deploy.yaml) 运行 HW"
+  if (( NO_NATIVE )); then
+    echo "  --no-native: 跳过原生构建"
+  fi
+  echo "  经 dist 镜像 (dist/compose.hw.deploy.yaml) 运行 HW"
   run_step hw check "$dc -f dist/compose.hw.deploy.yaml run --rm soci-hw check"
   run_step hw test "$dc -f dist/compose.hw.deploy.yaml run --rm soci-hw test"
   if (( RUN_BENCHMARK )); then

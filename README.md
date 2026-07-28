@@ -307,6 +307,7 @@ Markdown + JSON 报告。按本机能力自动降级：无 SGX 设备则跳过 H
 ./scripts/generate_test_report.sh --modes off       # 只跑 OFF（最快）
 ./scripts/generate_test_report.sh --collect-only    # 不执行，仅汇总已有产物
 ./scripts/generate_test_report.sh --no-benchmark    # 跳过性能基准
+./scripts/generate_test_report.sh --no-native       # 强制走镜像，不用本机 SGX SDK 原生构建
 ./scripts/generate_test_report.sh --output results  # 报告输出目录（默认 results）
 ```
 
@@ -321,8 +322,12 @@ Markdown + JSON 报告。按本机能力自动降级：无 SGX 设备则跳过 H
 
 ```bash
 gzip -dc dist/soci-sgx-hw-2.26.tar.gz | docker load   # 含 hw/cp/csp 三个镜像
-./scripts/generate_test_report.sh --modes hw
+./scripts/generate_test_report.sh --modes hw --no-native
 ```
+
+> 若服务器上**也装了本机 Intel SGX SDK**，脚本默认会优先原生编译（需要源码）。
+> 镜像部署、无源码时务必加 `--no-native`（或 `SOCI_NO_NATIVE=1`），强制走 dist 镜像，
+> 不碰宿主源码。该路径只需 `scripts/` + `dist/*.yaml` + 镜像，不需要项目源码。
 
 ## C++ 示例
 
