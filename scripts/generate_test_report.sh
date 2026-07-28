@@ -66,8 +66,12 @@ done
 
 mkdir -p "$OUTPUT_DIR/report-artifacts"
 ARTIFACTS_DIR="$OUTPUT_DIR/report-artifacts"
-: > "$ARTIFACTS_DIR/steps.tsv"
-: > "$ARTIFACTS_DIR/skips.tsv"
+if (( COLLECT_ONLY )); then
+  echo "==> collect-only: 复用 results/ 已有产物重新渲染（不执行构建/测试，不覆盖 env/steps/skips）"
+else
+  : > "$ARTIFACTS_DIR/steps.tsv"
+  : > "$ARTIFACTS_DIR/skips.tsv"
+fi
 SGX_SDK="${SGX_SDK:-/opt/intel/sgxsdk}"
 
 # ---- helpers ----------------------------------------------------------------
@@ -323,12 +327,18 @@ echo "输出目录: $OUTPUT_DIR"
 echo "模式: $MODES | collect-only=$COLLECT_ONLY | benchmark=$RUN_BENCHMARK"
 echo ""
 
-probe_env
-echo "环境探测完成: $ARTIFACTS_DIR/env.txt"
-echo ""
+if (( ! COLLECT_ONLY )); then
+  probe_env
+  echo "环境探测完成: $ARTIFACTS_DIR/env.txt"
+  echo ""
+fi
 
 IFS=',' read -ra MODE_ARRAY <<< "$MODES"
 for mode in "${MODE_ARRAY[@]}"; do
+  if (( COLLECT_ONLY )); then
+    echo "  [collect-only] $mode: 复用已有产物（不执行）"
+    continue
+  fi
   case "$mode" in
     off) run_off ;;
     sim) run_sim ;;
