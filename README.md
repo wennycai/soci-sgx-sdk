@@ -9,13 +9,16 @@ Intel SGX Enclave。CP 和 CSP 使用两个独立 Enclave 和服务进程。
 - 稳定的 C ABI（`libsoci_sdk.so`）和 C++ RAII 封装；
 - Python/pybind11 模块和 Java 8/JNI 动态库（`libsoci_jni.so`）；
 - Paillier 加密、同态加法、正负标量乘和解密；
+- 实验性 SOCI-plus 安全算子（SMUL/SCMP/SSBA/SABS/SDIV），默认关闭；
+- 密态最优化算子（固定 `n×3` 成本矩阵、带 ratio 约束的最小成本选择）；
 - CP/CSP 服务程序及共享的 SIM/HW EDL；
 - OFF、SIM、HW 三种严格隔离的构建模式；
 - CMake Presets、Docker、普通 CI 和 SGX Hardware CI；
 - 版本化密文、公钥与密钥元数据，以及输入大小和模式检查。
 
-SMUL、SCMP、SSBA、SDIV 等参考协议的安全模型不能满足生产要求，默认关闭。
-具体暴露面和尚待完成的生产安全能力见 `docs/SECURITY.md`。
+SMUL、SCMP、SSBA、SABS、SDIV 采用 SOCI-plus 半诚实协议结构，默认关闭，构建时
+开启 `SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS`。它们仍缺乏重放保护和形式化恶意安全
+证明，不能满足生产要求；具体暴露面和尚待完成的生产安全能力见 `docs/SECURITY.md`。
 
 ## 运行模式
 
@@ -87,8 +90,9 @@ cat results/benchmark-off-3072.json
 ```
 
 它分别输出 KEYGEN、ENCRYPT、DECRYPT、SMUL、SCMP、SABS、SDIV 的
-mean、P50、P95、min、max 和正确性。当前安全计算项是 OFF 模式
-reference-only 基线，不是 SGX 或生产协议数据，详见 `docs/BENCHMARK.md`。
+mean、P50、P95、min、max 和正确性。OFF 单进程持有完整测试密钥，安全算子模拟
+SOCI-plus 协议流程（只解密掩码操作数或随机化差值），仅用于 API、协议代数正确性
+和性能回归，不代表双方隔离部署的安全性或 SGX 性能，详见 `docs/BENCHMARK.md`。
 
 输出包括 `build/off-debug/libsoci_sdk.so`、可选的
 `libsoci_jni.so`、CP/CSP 服务程序及 `build-manifest.json`。
@@ -243,7 +247,8 @@ SABS、SDIV 的 mean/P50/P95、CP Enclave 时间、CSP 往返时间和正确性�
 SIM/HW 的 SMUL、SCMP、SABS、SDIV 使用 SOCI-plus 半诚实协议结构和 CP/CSP
 阈值解密：SMUL 双输入掩码并按 `X^L · Y` 打包，SCMP 随机化并随机翻转差值，SABS 组合 SCMP 与
 SMUL，SDIV 逐位组合 SCMP 与 SMUL。CSP 不再获得 SCMP/SDIV 的原始操作数。
-OFF 中同名算子仍是 `experimental_reference_only` 的解密—计算—重加密基线。
+OFF 中同名算子模拟同一 SOCI-plus 协议流程，但单进程持有完整测试密钥，仅作功能
+与回归基线，不提供双方隔离。
 
 默认参数为 KeyGen 预热 20 次、统计 30 次，解密预热 10 次、统计 100 次。
 可以在运行前覆盖：
@@ -379,8 +384,44 @@ cd bindings/java && mvn package
 Java/JNI 接口测试覆盖 Encrypt、Decrypt、SADD、ScalarMul、SMUL、SCMP、
 SABS 和 SDIV。测试类位于
 `bindings/java/src/test/java/com/soci/sdk/BindingBenchmark.java`。
-Python/Java 的上述测试使用 OFF reference-only 后端来单独测量语言绑定；
-它们不能替代 `cp-csp-benchmark-hw-3072.json` 中的真实 HW Enclave 数据。
+Python/Java 的上述测试使用 OFF 后端来单独测量语言绑定；它们不能替代
+`cp-csp-benchmark-hw-3072.json` 中的真实 HW Enclave 数据。
+
+## 密态最优化算子
+
+`include/soci/optimization.hpp` 提供固定 `n×3` 成本矩阵的最优化算子：每种物料
+从 3 种开发方式中选 1 种，在满足 ratio 约束的前提下使总成本最小。成本为十进制
+字符串（最多 6 位小数）或 `std::nullopt`（表示该方式不可用）。
+
+```cpp
+#include <soci/soci.hpp>
+#include <soci/optimization.hpp>
+soci::Runtime runtime("runtime/off");
+runtime.create_key("demo");
+soci::optimization::Optimizer opt(runtime);
+using soci::optimization::CostMatrix;
+CostMatrix costs = {
+  {{"10.5", "12.1", "8.4"}},
+  {{"20.0", std::nullopt, "15.2"}},
+  {{std::nullopt, "18.4", "11.6"}},
+};
+auto r = opt.optimize(costs, "0.6");  // r.total_cost / r.solution / r.ratio
+```
+
+`optimize_plain` / `optimize_csv_plain` 是不依赖密钥的独立参考求解器；
+`Optimizer::optimize_encrypted` 直接接受密文成本矩阵。模型遵循 PuLP
+`LpProblem` 语义（每行恰好选一、线性最小成本目标、线性化 ratio 约束），用确定性
+分支定界求解，运行时不依赖 Python 或 PuLP。Python 暴露 `Optimizer`、
+`OptimizationResult`、`optimize_plain`、`optimize_csv_plain`，Java 暴露
+`SociOptimizer`、`OptimizationResult`。
+
+交互演示见 `examples/optimization-demo/`：浏览器经本地 Java/JNI HTTP 服务调用
+OFF SDK，A/B 双角色工作台演示数据拥有方加密、数据使用方在密文上选择算子并回传
+结果的完整流程。
+
+```bash
+./examples/optimization-demo/run_off_demo.sh 8080   # 浏览器访问 http://127.0.0.1:8080
+```
 
 ## 目录
 
@@ -390,6 +431,7 @@ Python/Java 的上述测试使用 OFF reference-only 后端来单独测量语言
 - `bindings`：Python 和 Java 绑定；
 - `services`：CP/CSP 服务；
 - `tests`：OFF 与 SGX 生命周期测试；
+- `examples`：密态最优化交互演示；
 - `scripts`、`docker`、`.github/workflows`：构建、复现和 CI。
 
 密钥目录应按 `runtime/off`、`runtime/sim/{cp,csp}` 和
