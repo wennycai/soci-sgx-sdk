@@ -8,7 +8,7 @@ set(SOCI_SGX_MODE "OFF" CACHE STRING "OFF, SIM or HW")
 set_property(CACHE SOCI_SGX_MODE PROPERTY STRINGS OFF SIM HW)
 option(SOCI_BUILD_PYTHON "Build pybind11 module" ON)
 option(SOCI_BUILD_JAVA "Build JNI library" ON)
-option(SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS "Enable reference-only protocols" OFF)
+option(SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS "Enable SOCI-plus experimental secure protocols" OFF)
 
 if(NOT SOCI_SGX_MODE MATCHES "^(OFF|SIM|HW)$")
   message(FATAL_ERROR "SOCI_SGX_MODE must be OFF, SIM, or HW")

@@ -557,7 +557,7 @@ def render_md(r):
     if not r["benchmarks"]:
         L.append("_(未发现 results/*.json 基准产物)_\n")
     else:
-        L.append("> 说明: OFF 基准中的 SMUL/SCMP/SABS/SDIV 为 `experimental_reference_only`，"
+        L.append("> 说明: OFF 基准中的 SMUL/SCMP/SABS/SDIV 模拟 SOCI-plus 协议流程，"
                  "仅用于 API/正确性/回归，不代表 SGX 或生产协议性能；SIM 数据不代表 HW 性能。详见 `docs/BENCHMARK.md`。\n")
         for b in r["benchmarks"]:
             L.append(f"### `{b['file']}`\n")
@@ -657,7 +657,7 @@ def render_md(r):
     L.append("- OFF 模式不涉及 SGX，密钥文件仅供测试，不保密。")
     L.append("- SIM 模式使用真实 EDL/ECALL/Enclave，但不需要 SGX 硬件；其数据不代表 HW 性能。")
     L.append("- HW 模式需要 SGX CPU/BIOS/驱动与 `/dev/sgx_enclave`；本报告未含远程证明。")
-    L.append("- SMUL/SCMP/SABS/SDIV 等参考协议为 `experimental_reference_only`，安全模型不满足生产要求，默认关闭。")
+    L.append("- SMUL/SCMP/SABS/SDIV 为实验性 SOCI-plus 半诚实协议，默认关闭（`SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS`），尚不满足生产安全要求。")
     L.append("- 3072-bit Paillier 模数对应约 128-bit 经典安全强度；低于 3072-bit 的密钥生成会被拒绝。")
     L.append("- 详见 `README.md`、`docs/SECURITY.md`、`docs/BENCHMARK.md`、`docs/DEPLOYMENT.md`。\n")
 
