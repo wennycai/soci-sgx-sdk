@@ -115,12 +115,19 @@ else()
     "${CMAKE_BINARY_DIR}/soci_provisioning_enclave.signed.so"
     "${CMAKE_BINARY_DIR}/soci_cp_enclave.signed.so"
     "${CMAKE_BINARY_DIR}/soci_csp_enclave.signed.so" "${SOCI_SGX_MODE}")
+  add_test(NAME soci_threshold_secure_ops_integration
+    COMMAND soci_threshold_secure_ops_test
+      "${CMAKE_BINARY_DIR}/soci_provisioning_enclave.signed.so"
+      "${CMAKE_BINARY_DIR}/soci_cp_enclave.signed.so"
+      "${CMAKE_BINARY_DIR}/soci_csp_enclave.signed.so" "${SOCI_SGX_MODE}")
   set_tests_properties(soci_sgx_crypto_correctness PROPERTIES TIMEOUT 600)
-  set_tests_properties(soci_sgx_threshold_correctness PROPERTIES TIMEOUT 600)
+  set_tests_properties(soci_sgx_threshold_correctness
+    soci_threshold_secure_ops_integration PROPERTIES TIMEOUT 600)
   if(SOCI_SGX_MODE STREQUAL "SIM")
     set_tests_properties(
       soci_sgx_cp_lifecycle soci_sgx_csp_lifecycle soci_sgx_crypto_correctness
       soci_sgx_threshold_correctness
+      soci_threshold_secure_ops_integration
       PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$ENV{SGX_SDK}/lib64")
   endif()
 endif()

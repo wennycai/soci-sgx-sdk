@@ -40,6 +40,7 @@ class ThresholdProtocolClient {
                               ProtocolMetrics* metrics = nullptr);
   void requestServerShutdown();
   const mpz_class& modulus() const noexcept;
+  ThresholdMode mode() const noexcept;
 
  private:
   class Impl;

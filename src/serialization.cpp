@@ -1,4 +1,5 @@
 #include "internal.hpp"
+#include "ciphertext_codec.hpp"
 #include <openssl/sha.h>
 #include <fstream>
 #include <cstring>
@@ -9,8 +10,8 @@ static void put32(std::vector<uint8_t>&o,uint32_t x){for(int i=3;i>=0;i--)o.push
 static uint32_t get32(const uint8_t*p){return(uint32_t(p[0])<<24)|(uint32_t(p[1])<<16)|(uint32_t(p[2])<<8)|p[3];}
 static std::vector<uint8_t> mag(const mpz_class&z){size_t n=(mpz_sizeinbase(z.get_mpz_t(),2)+7)/8;std::vector<uint8_t>o(n);if(n)mpz_export(o.data(),nullptr,1,1,1,0,z.get_mpz_t());return o;}
 static mpz_class unmag(const uint8_t*p,size_t n){mpz_class z;if(n)mpz_import(z.get_mpz_t(),n,1,1,1,0,p);return z;}
-std::vector<uint8_t> encode_object(uint8_t type,soci_mode_t mode,const mpz_class&z){auto m=mag(z);std::vector<uint8_t>o{'S','O','C','I',1,type,uint8_t(mode),0};put32(o,m.size());o.insert(o.end(),m.begin(),m.end());return o;}
-mpz_class decode_object(const uint8_t*p,size_t n,uint8_t type,soci_mode_t mode){if(!p||n<12||n>kMaxObject||memcmp(p,"SOCI",4)||p[4]!=1||p[5]!=type||p[6]!=mode)throw std::invalid_argument("invalid object header/type/mode");uint32_t s=get32(p+8);if(s!=n-12)throw std::invalid_argument("invalid object length");return unmag(p+12,s);}
+std::vector<uint8_t> encode_object(uint8_t type,soci_mode_t mode,const mpz_class&z){if(type==1)return encodeCanonicalCiphertext(uint8_t(mode),z);auto m=mag(z);std::vector<uint8_t>o{'S','O','C','I',1,type,uint8_t(mode),0};put32(o,m.size());o.insert(o.end(),m.begin(),m.end());return o;}
+mpz_class decode_object(const uint8_t*p,size_t n,uint8_t type,soci_mode_t mode){if(n>kMaxObject)throw std::invalid_argument("object too large");if(type==1)return decodeCanonicalCiphertext(p,n,uint8_t(mode));if(!p||n<12||memcmp(p,"SOCI",4)||p[4]!=1||p[5]!=type||p[6]!=mode)throw std::invalid_argument("invalid object header/type/mode");uint32_t s=get32(p+8);if(s!=n-12)throw std::invalid_argument("invalid object length");return unmag(p+12,s);}
 std::vector<uint8_t> encode_public(const Key&k){return encode_object(2,k.info.runtime_mode,k.pub.n);}
 bool valid_id(const std::string&s){if(s.empty()||s.size()>64)return false;for(char c:s)if(!isalnum((unsigned char)c)&&c!='-'&&c!='_')return false;return true;}
 void save_off_key(const std::filesystem::path&p,const Key&k){

@@ -1,5 +1,6 @@
 #include "protocol/threshold_protocol.hpp"
 
+#include "ciphertext_codec.hpp"
 #include "protocol/threshold_wire.hpp"
 #include "soci_u.h"
 
@@ -8,7 +9,7 @@
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
-#include <random>
+#include <openssl/rand.h>
 #include <stdexcept>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -127,22 +128,39 @@ mpz_class ciphertextPower(const mpz_class& ciphertext,
   return result;
 }
 
-mpz_class encodeCiphertext(const secure::Ciphertext& ciphertext) {
+mpz_class encodeCiphertext(const secure::Ciphertext& ciphertext,
+                           ThresholdMode mode) {
   if (ciphertext.bytes.empty()) throw std::invalid_argument("empty ciphertext");
+  return detail::decodeCanonicalCiphertext(ciphertext.bytes.data(),
+                                           ciphertext.bytes.size(),
+                                           modeByte(mode));
+}
+
+secure::Ciphertext decodeCiphertext(const mpz_class& value,
+                                    ThresholdMode mode) {
+  return {detail::encodeCanonicalCiphertext(modeByte(mode), value)};
+}
+
+mpz_class randomBits(unsigned bits) {
+  if (bits == 0) return 0;
+  std::vector<unsigned char> bytes((bits + 7) / 8);
+  if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
+    throw std::runtime_error("OpenSSL CSPRNG failure");
+  const unsigned excess = bytes.size() * 8 - bits;
+  if (excess) bytes.front() &= static_cast<unsigned char>(0xffu >> excess);
   mpz_class value;
-  mpz_import(value.get_mpz_t(), ciphertext.bytes.size(), 1, 1, 1, 0,
-             ciphertext.bytes.data());
+  mpz_import(value.get_mpz_t(), bytes.size(), 1, 1, 1, 0, bytes.data());
   return value;
 }
 
-secure::Ciphertext decodeCiphertext(const mpz_class& value) {
-  secure::Ciphertext output;
-  const auto size = (mpz_sizeinbase(value.get_mpz_t(), 2) + 7) / 8;
-  output.bytes.resize(size);
-  std::size_t written = 0;
-  mpz_export(output.bytes.data(), &written, 1, 1, 1, 0, value.get_mpz_t());
-  output.bytes.resize(written);
-  return output;
+mpz_class randomBelow(const mpz_class& limit) {
+  if (limit <= 0) throw std::invalid_argument("random limit must be positive");
+  const mpz_class maximum = limit - 1;
+  const auto bits = mpz_sizeinbase(maximum.get_mpz_t(), 2);
+  mpz_class value;
+  do value = randomBits(bits);
+  while (value >= limit);
+  return value;
 }
 }  // namespace
 
@@ -152,13 +170,11 @@ class ThresholdProtocolClient::Impl {
        std::string csp_host, int csp_port, ThresholdMode selected_mode)
       : mode(selected_mode), enclave(createEnclave(enclave_path)),
         modulus(loadModulus(key_directory + "/public.bin")),
-        modulus_squared(modulus * modulus), random(gmp_randinit_default) {
+        modulus_squared(modulus * modulus) {
     try {
       initializeEnclave(enclave, 1, mode);
       loadShare(enclave, key_directory + "/cp.sealed");
       socket = wire::connectTcp(csp_host, csp_port);
-      std::random_device seed;
-      random.seed((mpz_class(seed()) << 64) + seed());
     } catch (...) {
       if (socket >= 0) close(socket);
       sgx_destroy_enclave(enclave);
@@ -174,12 +190,12 @@ class ThresholdProtocolClient::Impl {
   mpz_class randomMask() {
     // Protocol operands must obey NumericDomain; the mask and packing base
     // match the reviewed SOCI-plus implementation used by the SGX benchmark.
-    return (mpz_class(1) << 127) + random.get_z_bits(127);
+    return (mpz_class(1) << 127) + randomBits(127);
   }
 
   mpz_class encrypt(const mpz_class& plaintext) {
     mpz_class nonce, nonce_n;
-    do nonce = random.get_z_range(modulus);
+    do nonce = randomBelow(modulus);
     while (nonce == 0 || gcd(nonce, modulus) != 1);
     mpz_powm(nonce_n.get_mpz_t(), nonce.get_mpz_t(), modulus.get_mpz_t(),
              modulus_squared.get_mpz_t());
@@ -192,7 +208,6 @@ class ThresholdProtocolClient::Impl {
   sgx_enclave_id_t enclave{};
   mpz_class modulus;
   mpz_class modulus_squared;
-  gmp_randclass random;
   int socket{-1};
 };
 
@@ -254,7 +269,7 @@ mpz_class ThresholdProtocolClient::greaterThan(const mpz_class& a,
   do r = impl_->randomMask();
   while (r >= r3);
   const mpz_class r4 = impl_->modulus / 2 - r;
-  const bool orientation = impl_->random.get_z_bits(1) != 0;
+  const bool orientation = randomBits(1) != 0;
   mpz_class difference;
   if (!orientation) {
     difference = add(left, scalarMultiply(right, impl_->modulus - 1));
@@ -301,36 +316,62 @@ const mpz_class& ThresholdProtocolClient::modulus() const noexcept {
   return impl_->modulus;
 }
 
+ThresholdMode ThresholdProtocolClient::mode() const noexcept {
+  return impl_->mode;
+}
+
 ThresholdSecureOps::ThresholdSecureOps(ThresholdProtocolClient& protocol,
                                        secure::NumericDomain domain)
-    : protocol_(protocol), domain_(domain) {}
+    : protocol_(protocol), domain_(domain) {
+  constexpr std::uint32_t kProtocolOperandBits = 128;
+  if (domain_.scale <= 0 || domain_.max_rows == 0 ||
+      domain_.max_cost_bits == 0 || domain_.max_total_bits == 0 ||
+      domain_.max_linear_bits == 0 || domain_.compare_operand_bits == 0)
+    throw std::invalid_argument(
+        "ThresholdSecureOps requires a complete NumericDomain");
+  if (domain_.max_cost_bits > kProtocolOperandBits ||
+      domain_.max_total_bits > kProtocolOperandBits ||
+      domain_.max_linear_bits > kProtocolOperandBits ||
+      domain_.compare_operand_bits > kProtocolOperandBits)
+    throw std::invalid_argument(
+        "NumericDomain exceeds the 128-bit protocol bound");
+  if (domain_.max_total_bits < domain_.max_cost_bits ||
+      domain_.max_linear_bits < domain_.max_cost_bits)
+    throw std::invalid_argument("NumericDomain derived bounds are inconsistent");
+}
 
 secure::Ciphertext ThresholdSecureOps::encryptConstant(std::int64_t value) {
-  return decodeCiphertext(protocol_.encrypt(value));
+  return decodeCiphertext(protocol_.encrypt(value), protocol_.mode());
 }
 
 secure::Ciphertext ThresholdSecureOps::add(const secure::Ciphertext& a,
                                            const secure::Ciphertext& b) {
-  return decodeCiphertext(protocol_.add(encodeCiphertext(a),
-                                        encodeCiphertext(b)));
+  return decodeCiphertext(protocol_.add(encodeCiphertext(a, protocol_.mode()),
+                                        encodeCiphertext(b, protocol_.mode())),
+                          protocol_.mode());
 }
 
 secure::Ciphertext ThresholdSecureOps::scalarMul(const secure::Ciphertext& a,
                                                  std::int64_t scalar) {
-  return decodeCiphertext(
-      protocol_.scalarMultiply(encodeCiphertext(a), scalar));
+  return decodeCiphertext(protocol_.scalarMultiply(
+                              encodeCiphertext(a, protocol_.mode()), scalar),
+                          protocol_.mode());
 }
 
 secure::Ciphertext ThresholdSecureOps::secureMul(const secure::Ciphertext& a,
                                                  const secure::Ciphertext& b) {
-  return decodeCiphertext(protocol_.secureMultiply(encodeCiphertext(a),
-                                                   encodeCiphertext(b)));
+  return decodeCiphertext(protocol_.secureMultiply(
+                              encodeCiphertext(a, protocol_.mode()),
+                              encodeCiphertext(b, protocol_.mode())),
+                          protocol_.mode());
 }
 
 secure::EncryptedBit ThresholdSecureOps::greaterThan(
     const secure::Ciphertext& a, const secure::Ciphertext& b) {
   return encryptedBit(decodeCiphertext(
-      protocol_.greaterThan(encodeCiphertext(a), encodeCiphertext(b))));
+      protocol_.greaterThan(encodeCiphertext(a, protocol_.mode()),
+                            encodeCiphertext(b, protocol_.mode())),
+      protocol_.mode()));
 }
 
 int provisionThresholdKeys(const std::string& enclave_path,
@@ -385,12 +426,9 @@ int runThresholdCsp(const std::string& enclave_path,
   loadShare(enclave, key_directory + "/csp.sealed");
   const auto modulus = loadModulus(key_directory + "/public.bin");
   const mpz_class modulus_squared = modulus * modulus;
-  gmp_randclass random(gmp_randinit_default);
-  std::random_device seed;
-  random.seed((mpz_class(seed()) << 64) + seed());
   auto encrypt = [&](const mpz_class& plaintext) {
     mpz_class nonce, nonce_n;
-    do nonce = random.get_z_range(modulus);
+    do nonce = randomBelow(modulus);
     while (nonce == 0 || gcd(nonce, modulus) != 1);
     mpz_powm(nonce_n.get_mpz_t(), nonce.get_mpz_t(), modulus.get_mpz_t(),
              modulus_squared.get_mpz_t());
