@@ -49,7 +49,7 @@ bool random_below(mpz_t z,const mpz_t limit){
 size_t exported_size(const mpz_t z){return(mpz_sizeinbase(z,2)+7)/8;}
 bool export_at(uint8_t*out,size_t cap,size_t*pos,const mpz_t z){
   size_t len=exported_size(z);if(*pos+4+len>cap)return false;put32(out+*pos,len);*pos+=4;
-  size_t wrote=0;mpz_export(out+*pos,&wrote,1,1,1,0,z);*pos+=wrote;return wrote==len;
+  size_t wrote=0;mpz_export(out+*pos,&wrote,1,1,1,0,z);if(!wrote&&mpz_cmp_ui(z,0)==0){out[*pos]=0;wrote=1;}*pos+=wrote;return wrote==len;
 }
 bool import_at(mpz_t z,const uint8_t*in,size_t size,size_t*pos){
   if(*pos+4>size)return false;uint32_t len=be32(in+*pos);*pos+=4;if(!len||*pos+len>size)return false;
@@ -137,7 +137,7 @@ uint32_t ecall_decrypt(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,size_t*o
   if(good){mpz_powm(u,c,lambda_z,nsq);mpz_sub_ui(u,u,1);mpz_fdiv_q(u,u,n);mpz_mul(m,u,mu);mpz_mod(m,m,n);}
   size_t len=good?exported_size(m):0,required=12+len;*out_size=required;
   if(!good){wipe(c);wipe(u);wipe(m);return INVALID;}if(!out||cap<required){wipe(c);wipe(u);wipe(m);return BUFFER;}
-  memcpy(out,"SPLN",4);out[4]=1;out[5]=runtime_mode;out[6]=0;out[7]=0;put32(out+8,len);size_t wrote=0;mpz_export(out+12,&wrote,1,1,1,0,m);
+  memcpy(out,"SPLN",4);out[4]=1;out[5]=runtime_mode;out[6]=0;out[7]=0;put32(out+8,len);size_t wrote=0;mpz_export(out+12,&wrote,1,1,1,0,m);if(!wrote&&mpz_cmp_ui(m,0)==0){out[12]=0;wrote=1;}
   wipe(c);wipe(u);wipe(m);return wrote==len?OK:CRYPTO;
 }
 uint32_t ecall_partial_decrypt(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,size_t*out_size){
@@ -162,7 +162,7 @@ uint32_t ecall_combine_decrypt(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,
   if(!good){wipe(u1);wipe(u2);wipe(u);wipe(m);return INVALID;}
   if(!out||cap<required){wipe(u1);wipe(u2);wipe(u);wipe(m);return BUFFER;}
   memcpy(out,"SPLN",4);out[4]=1;out[5]=runtime_mode;out[6]=3;out[7]=0;put32(out+8,(uint32_t)len);
-  size_t wrote=0;mpz_export(out+12,&wrote,1,1,1,0,m);
+  size_t wrote=0;mpz_export(out+12,&wrote,1,1,1,0,m);if(!wrote&&mpz_cmp_ui(m,0)==0){out[12]=0;wrote=1;}
   wipe(u1);wipe(u2);wipe(u);wipe(m);return wrote==len?OK:CRYPTO;
 }
 uint32_t ecall_load_sealed_key(uint8_t*in,size_t size){
