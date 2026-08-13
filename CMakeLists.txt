@@ -36,6 +36,8 @@ if(NOT SOCI_SGX_MODE STREQUAL "OFF")
   target_link_libraries(soci_sgx_threshold_test PRIVATE ${GMPXX_LIBRARY} ${GMP_LIBRARY})
   target_include_directories(soci_threshold_runtime PRIVATE ${GMP_INCLUDE_DIR})
   target_link_libraries(soci_threshold_runtime PRIVATE ${GMPXX_LIBRARY} ${GMP_LIBRARY})
+  target_include_directories(soci_threshold_protocol PRIVATE ${GMP_INCLUDE_DIR})
+  target_link_libraries(soci_threshold_protocol PUBLIC ${GMPXX_LIBRARY} ${GMP_LIBRARY})
 endif()
 
 add_library(soci_sdk SHARED

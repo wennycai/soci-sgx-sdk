@@ -116,11 +116,27 @@ if(SOCI_SGX_MODE STREQUAL "HW")
   set_target_properties(soci_sgx_threshold_test PROPERTIES SKIP_BUILD_RPATH TRUE)
 endif()
 add_dependencies(soci_sgx_threshold_test soci_provisioning_enclave soci_cp_enclave soci_csp_enclave)
-add_executable(soci_threshold_runtime services/threshold_runtime.cpp "${SGX_U_GEN}/soci_u.c")
-target_include_directories(soci_threshold_runtime PRIVATE "${SGX_INCLUDE_DIR}" "${SGX_U_GEN}")
+add_library(soci_threshold_protocol STATIC
+  src/protocol/threshold_wire.cpp
+  src/protocol/threshold_protocol.cpp
+  "${SGX_U_GEN}/soci_u.c")
+target_include_directories(soci_threshold_protocol PUBLIC
+  "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/include"
+  PRIVATE "${SGX_INCLUDE_DIR}" "${SGX_U_GEN}" "${GMP_INCLUDE_DIR}")
+target_link_directories(soci_threshold_protocol PRIVATE "${SGX_LIBRARY_DIR}")
+target_link_libraries(soci_threshold_protocol PUBLIC
+  ${SGX_URTS} pthread ${GMPXX_LIBRARY} ${GMP_LIBRARY})
+if(SOCI_SGX_MODE STREQUAL "HW")
+  set_target_properties(soci_threshold_protocol PROPERTIES SKIP_BUILD_RPATH TRUE)
+endif()
+add_dependencies(soci_threshold_protocol soci_provisioning_enclave soci_cp_enclave soci_csp_enclave)
+
+add_executable(soci_threshold_runtime services/threshold_runtime.cpp)
+target_include_directories(soci_threshold_runtime PRIVATE
+  "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/include")
 target_link_directories(soci_threshold_runtime PRIVATE "${SGX_LIBRARY_DIR}")
-target_link_libraries(soci_threshold_runtime PRIVATE ${SGX_URTS} pthread)
+target_link_libraries(soci_threshold_runtime PRIVATE soci_threshold_protocol)
 if(SOCI_SGX_MODE STREQUAL "HW")
   set_target_properties(soci_threshold_runtime PROPERTIES SKIP_BUILD_RPATH TRUE)
 endif()
-add_dependencies(soci_threshold_runtime soci_provisioning_enclave soci_cp_enclave soci_csp_enclave)
+add_dependencies(soci_threshold_runtime soci_threshold_protocol)
