@@ -7,4 +7,9 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y ninja-build libgmp-dev libssl-dev
       - run: scripts/build_off.sh && scripts/test_off.sh
-      - run: cmake --preset off-asan && cmake --build --preset off-asan && ctest --preset off-asan
+      - run: cmake --preset off-experimental
+      - run: cmake --build --preset off-experimental
+      - run: ctest --preset off-experimental
+      - run: cmake --preset off-experimental-asan
+      - run: cmake --build --preset off-experimental-asan
+      - run: ctest --preset off-experimental-asan
