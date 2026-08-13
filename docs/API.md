@@ -6,6 +6,13 @@ uses the standard two-call pattern: pass a null output to obtain the required
 size, allocate, and call again. Plaintexts/scalars are decimal UTF-8 strings.
 Ciphertexts and public keys are versioned binary objects carrying their mode.
 
+Encrypted control predicates are evaluated separately from optimization via
+`PredicateEngine`. Callers provide a `PredicateContext` containing
+`session_id`, `operation_id`, `predicate_type`, `depth`, and `node_id`.
+Only `PRUNE_NODE` and `ACCEPT_CANDIDATE` are accepted, and each operation ID is
+consumed once per session. The engine returns one authorized boolean and does
+not expose the predicate plaintext or a general decryption API.
+
 The C++ RAII wrapper is `include/soci/soci.hpp`. Python and Java call only this
 untrusted SDK layer, never ECALLs.
 

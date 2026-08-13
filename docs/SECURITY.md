@@ -32,5 +32,15 @@ transport with request/session/sequence binding, remote attestation binding,
 and a deployment-backed anti-rollback key-version store. No secret shares are
 exported as a workaround.
 
+`PredicateEngine` is the only application-facing conversion from an
+`EncryptedBit` to control-flow `bool`. Every evaluation carries a validated
+session ID, operation ID, predicate type (`PRUNE_NODE` or
+`ACCEPT_CANDIDATE`), depth, and node ID. Authorization happens before the
+privileged bit resolver is invoked, and `(session_id, operation_id)` is
+single-use even when resolution fails. The threshold resolver rejects any
+decrypted plaintext other than exactly 0 or 1. This is a capability and
+protocol-layer boundary; deployment authorization still depends on the future
+authenticated transport and attestation work listed above.
+
 HW mode is fail-closed: configuration requires Intel SGX SDK and the hardware
 scripts require SGX CPU/device checks. It never falls back to SIM or OFF.

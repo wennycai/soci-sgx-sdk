@@ -1,6 +1,7 @@
 #pragma once
 
 #include "soci/secure_ops.hpp"
+#include "soci/predicate_engine.hpp"
 
 #include <gmpxx.h>
 #include <cstdint>
@@ -38,6 +39,8 @@ class ThresholdProtocolClient {
   // Management/benchmark API only; it is deliberately absent from SecureOps.
   mpz_class decryptForTesting(const mpz_class& ciphertext,
                               ProtocolMetrics* metrics = nullptr);
+  bool resolvePredicate(const mpz_class& encrypted_bit,
+                        ProtocolMetrics* metrics = nullptr);
   void requestServerShutdown();
   const mpz_class& modulus() const noexcept;
   ThresholdMode mode() const noexcept;
@@ -68,6 +71,17 @@ class ThresholdSecureOps final : public secure::SecureOps {
  private:
   ThresholdProtocolClient& protocol_;
   secure::NumericDomain domain_;
+};
+
+class ThresholdPredicateBitResolver final
+    : public secure::PredicateBitResolver {
+ public:
+  explicit ThresholdPredicateBitResolver(ThresholdProtocolClient& protocol)
+      : protocol_(protocol) {}
+  bool resolve(const secure::EncryptedBit& bit) override;
+
+ private:
+  ThresholdProtocolClient& protocol_;
 };
 
 int provisionThresholdKeys(const std::string& enclave_path,

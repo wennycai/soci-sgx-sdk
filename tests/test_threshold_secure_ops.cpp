@@ -34,6 +34,15 @@ void require(bool condition, const char* message) {
   if (!condition) throw std::runtime_error(message);
 }
 
+class IntegrationAuthorizer final
+    : public soci::secure::PredicateAuthorizer {
+ public:
+  bool authorize(const soci::secure::PredicateContext& context) override {
+    return context.session_id == "threshold-sim" &&
+           !context.operation_id.empty() && context.node_id == "node-7";
+  }
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -64,6 +73,11 @@ int main(int argc, char** argv) {
         argv[2], directory.string(), "127.0.0.1", port, mode);
     const soci::secure::NumericDomain domain{1'000'000, 100, 32, 48, 64, 64};
     soci::protocol::ThresholdSecureOps ops(protocol, domain);
+    IntegrationAuthorizer authorizer;
+    soci::protocol::ThresholdPredicateBitResolver predicate_resolver(protocol);
+    soci::secure::PredicateEngine predicate_engine(authorizer,
+                                                    predicate_resolver);
+    std::uint64_t predicate_sequence = 0;
     bool rejected = false;
     try {
       soci::secure::Ciphertext raw{{1, 2, 3}};
@@ -87,7 +101,11 @@ int main(int argc, char** argv) {
       return protocol.decryptForTesting(raw);
     };
     const auto revealBit = [&](const soci::secure::EncryptedBit& value) {
-      return reveal(value.ciphertext());
+      soci::secure::PredicateContext context{
+          "threshold-sim", "predicate-" + std::to_string(++predicate_sequence),
+          soci::secure::PredicateType::prune_node, 3, "node-7"};
+      return predicate_engine.evaluate(context, value) ? mpz_class(1)
+                                                       : mpz_class(0);
     };
 
     stage = "add";

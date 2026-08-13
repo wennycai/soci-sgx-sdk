@@ -343,6 +343,14 @@ mpz_class ThresholdProtocolClient::decryptForTesting(
                                         : plaintext;
 }
 
+bool ThresholdProtocolClient::resolvePredicate(
+    const mpz_class& encrypted_bit, ProtocolMetrics* metrics) {
+  const auto plaintext = decryptForTesting(encrypted_bit, metrics);
+  if (plaintext != 0 && plaintext != 1)
+    throw secure::PredicateError("encrypted predicate is not a bit");
+  return plaintext == 1;
+}
+
 void ThresholdProtocolClient::requestServerShutdown() {
   wire::request(impl_->socket, 'Q', {});
 }
@@ -427,6 +435,12 @@ secure::EncryptedBit ThresholdSecureOps::greaterThan(
       protocol_.greaterThan(encodeCiphertext(a, protocol_.mode()),
                             encodeCiphertext(b, protocol_.mode())),
       protocol_.mode()));
+}
+
+bool ThresholdPredicateBitResolver::resolve(
+    const secure::EncryptedBit& bit) {
+  return protocol_.resolvePredicate(
+      encodeCiphertext(bit.ciphertext(), protocol_.mode()));
 }
 
 int provisionThresholdKeys(const std::string& enclave_path,
