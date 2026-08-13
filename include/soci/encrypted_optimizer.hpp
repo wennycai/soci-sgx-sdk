@@ -12,6 +12,8 @@
 namespace soci::optimization {
 
 struct EncryptedCostRow {
+  // Available costs must represent non-negative values within NumericDomain.
+  // The solver cannot decrypt ciphertexts to validate either property.
   std::array<std::optional<secure::Ciphertext>, 3> methods;
 };
 

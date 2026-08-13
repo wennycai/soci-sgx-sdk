@@ -212,24 +212,27 @@ int main() {
   require(!ratio_pruned.feasible && ratio_pruned.stats.pruned_nodes > 0,
           "ratio bound did not prune");
   const auto cost_pruned = harness.solve(
-      {PlainRow{1, 20, 2}, PlainRow{20, 20, 1}, PlainRow{1, 20, 2}}, 40);
+      {PlainRow{1, 20, 2}, PlainRow{20, 20, 1}, PlainRow{1, 20, 2}}, 0);
   require(cost_pruned.stats.pruned_nodes > 0, "cost bound did not prune");
-  harness.compare({PlainRow{1, 1, 1}, PlainRow{1, 1, 1}}, 0,
-                  "equal-lower-bound-not-pruned");
+  const auto equal_lower_bound = harness.solve(
+      {PlainRow{3, std::nullopt, 6}, PlainRow{2, std::nullopt, 5}}, 25);
+  require(equal_lower_bound.feasible &&
+              equal_lower_bound.solution == std::vector<std::uint8_t>({3, 1}) &&
+              harness.decrypt(equal_lower_bound.total_cost) == 8 &&
+              harness.decrypt(equal_lower_bound.c12) == 2,
+          "cost_lower equal to incumbent was incorrectly pruned");
 
   std::mt19937 generator(7331);
-  for (std::size_t trial = 0; trial < 6; ++trial) {
-    const std::size_t n = 1 + generator() % 3;
+  for (std::size_t trial = 0; trial < 36; ++trial) {
+    const std::size_t n = 1 + generator() % 5;
     std::vector<PlainRow> rows(n);
     for (auto& row : rows) {
-      bool any = false;
-      for (auto& method : row) {
-        if (generator() % 4 != 0) {
-          method = 1 + generator() % 9;
-          any = true;
-        }
+      const std::size_t first = generator() % 3;
+      row[first] = 1 + generator() % 9;
+      if (generator() % 3 == 0) {
+        const std::size_t second = (first + 1 + generator() % 2) % 3;
+        row[second] = 1 + generator() % 9;
       }
-      if (!any) row[generator() % 3] = 1 + generator() % 9;
     }
     const std::array<std::int64_t, 5> thresholds{0, 25, 50, 60, 75};
     harness.compare(rows, thresholds[generator() % thresholds.size()],
