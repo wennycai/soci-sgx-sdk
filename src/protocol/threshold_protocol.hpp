@@ -44,7 +44,8 @@ class ThresholdProtocolClient {
   ThresholdMode mode() const noexcept;
 
  private:
-  bool revealFinalPredicate(const mpz_class& encrypted_bit,
+  bool revealFinalPredicate(const secure::PredicateContext& context,
+                            const mpz_class& encrypted_bit,
                             ProtocolMetrics* metrics = nullptr);
   class Impl;
   std::unique_ptr<Impl> impl_;
@@ -80,7 +81,8 @@ class ThresholdPredicateBitResolver final
   explicit ThresholdPredicateBitResolver(ThresholdProtocolClient& protocol)
       : protocol_(protocol) {}
  private:
-  bool revealFinalBit(const secure::EncryptedBit& bit) override;
+  bool revealFinalBit(const secure::PredicateContext& context,
+                      const secure::EncryptedBit& bit) override;
   ThresholdProtocolClient& protocol_;
 };
 

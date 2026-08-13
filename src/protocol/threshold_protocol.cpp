@@ -176,6 +176,28 @@ mpz_class randomBelow(const mpz_class& limit) {
   return value;
 }
 
+void appendContextString(Bytes& output, const std::string& value) {
+  if (value.empty() || value.size() > 128)
+    throw secure::PredicateError("invalid predicate context field");
+  const auto offset = output.size();
+  output.resize(offset + 4 + value.size());
+  wire::writeU32(output.data() + offset,
+                 static_cast<std::uint32_t>(value.size()));
+  std::memcpy(output.data() + offset + 4, value.data(), value.size());
+}
+
+std::string takeContextString(const Bytes& input, std::size_t& offset) {
+  if (offset + 4 > input.size())
+    throw std::runtime_error("short predicate context");
+  const auto size = wire::readU32(input.data() + offset);
+  offset += 4;
+  if (size == 0 || size > 128 || offset + size > input.size())
+    throw std::runtime_error("invalid predicate context field");
+  std::string value(reinterpret_cast<const char*>(input.data() + offset), size);
+  offset += size;
+  return value;
+}
+
 template <typename Integer>
 std::uint32_t ceilLog2(Integer value) {
   if (value <= 1) return 0;
@@ -344,15 +366,21 @@ mpz_class ThresholdProtocolClient::decryptForTesting(
 }
 
 bool ThresholdProtocolClient::revealFinalPredicate(
-    const mpz_class& encrypted_bit, ProtocolMetrics* metrics) {
+    const secure::PredicateContext& context, const mpz_class& encrypted_bit,
+    ProtocolMetrics* metrics) {
   double* cp = metrics ? &metrics->cp_enclave_microseconds : nullptr;
   double* net = metrics ? &metrics->network_microseconds : nullptr;
   try {
-    auto reply = wire::request(
-        impl_->socket, 'P',
-        {encrypted_bit,
-         partialDecrypt(impl_->enclave, encrypted_bit, impl_->mode, cp)},
-        net);
+    Bytes request{'P', static_cast<std::uint8_t>(context.predicate_type), 0, 0,
+                  0,   0, 0, 0};
+    wire::writeU32(request.data() + 4, context.depth);
+    appendContextString(request, context.session_id);
+    appendContextString(request, context.operation_id);
+    appendContextString(request, context.node_id);
+    wire::appendInteger(request, encrypted_bit);
+    wire::appendInteger(
+        request, partialDecrypt(impl_->enclave, encrypted_bit, impl_->mode, cp));
+    auto reply = wire::requestPayload(impl_->socket, std::move(request), net);
     if (reply.size() != 1 || reply.front() > 1)
       throw secure::PredicateError("invalid threshold predicate response");
     return reply.front() == 1;
@@ -450,9 +478,10 @@ secure::EncryptedBit ThresholdSecureOps::greaterThan(
 }
 
 bool ThresholdPredicateBitResolver::revealFinalBit(
+    const secure::PredicateContext& context,
     const secure::EncryptedBit& bit) {
   return protocol_.revealFinalPredicate(
-      encodeCiphertext(bit.ciphertext(), protocol_.mode()));
+      context, encodeCiphertext(bit.ciphertext(), protocol_.mode()));
 }
 
 int provisionThresholdKeys(const std::string& enclave_path,
@@ -541,6 +570,35 @@ int runThresholdCsp(const std::string& enclave_path,
         const auto request = wire::receiveFrame(socket);
         if (request.empty()) throw std::runtime_error("empty request");
         const char operation = request.front();
+        if (operation == 'P') {
+          if (request.size() < 8 || request[1] < 1 || request[1] > 2 ||
+              request[2] != 0 || request[3] != 0)
+            throw std::runtime_error("invalid predicate request header");
+          std::size_t predicate_offset = 8;
+          const auto session_id =
+              takeContextString(request, predicate_offset);
+          const auto operation_id =
+              takeContextString(request, predicate_offset);
+          const auto node_id = takeContextString(request, predicate_offset);
+          const auto ciphertext =
+              wire::takeInteger(request, predicate_offset);
+          const auto cp_share = wire::takeInteger(request, predicate_offset);
+          if (predicate_offset != request.size())
+            throw std::runtime_error("trailing predicate request data");
+          (void)session_id;
+          (void)operation_id;
+          (void)node_id;
+          Bytes reply{0};
+          const auto predicate =
+              combineDecrypt(enclave, cp_share,
+                             partialDecrypt(enclave, ciphertext, mode), mode);
+          if (predicate != 0 && predicate != 1)
+            reply.front() = 1;
+          else
+            reply.push_back(predicate == 1 ? 1 : 0);
+          wire::sendFrame(socket, reply);
+          continue;
+        }
         std::size_t offset = 1;
         std::vector<mpz_class> values;
         while (offset < request.size())
@@ -559,14 +617,6 @@ int runThresholdCsp(const std::string& enclave_path,
               reply, combineDecrypt(enclave, values[1],
                                     partialDecrypt(enclave, values[0], mode),
                                     mode));
-        } else if (operation == 'P' && values.size() == 2) {
-          const auto predicate =
-              combineDecrypt(enclave, values[1],
-                             partialDecrypt(enclave, values[0], mode), mode);
-          if (predicate != 0 && predicate != 1)
-            reply.front() = 1;
-          else
-            reply.push_back(predicate == 1 ? 1 : 0);
         } else if (operation == 'M' && values.size() == 3) {
           if (values[2] <= 1)
             throw std::runtime_error("invalid SMUL packing base");

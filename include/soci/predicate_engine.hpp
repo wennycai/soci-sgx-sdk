@@ -22,6 +22,23 @@ struct PredicateContext {
   std::string node_id;
 };
 
+struct PruneInputs {
+  Ciphertext linear_upper;
+  Ciphertext cost_lower;
+  bool has_incumbent{};
+  Ciphertext incumbent_cost;
+};
+
+struct AcceptInputs {
+  Ciphertext linear;
+  Ciphertext c3;
+  Ciphertext cost;
+  Ciphertext c12;
+  bool has_incumbent{};
+  Ciphertext incumbent_cost;
+  Ciphertext incumbent_c12;
+};
+
 class PredicateAuthorizer {
  public:
   virtual ~PredicateAuthorizer() = default;
@@ -35,7 +52,8 @@ class PredicateBitResolver {
   virtual ~PredicateBitResolver() = default;
 
  private:
-  virtual bool revealFinalBit(const EncryptedBit& bit) = 0;
+  virtual bool revealFinalBit(const PredicateContext& context,
+                              const EncryptedBit& bit) = 0;
   friend class PredicateEngine;
 };
 
@@ -46,14 +64,16 @@ class PredicateError : public Error {
 
 class PredicateEngine final {
  public:
-  PredicateEngine(PredicateAuthorizer& authorizer,
+  // One engine represents one optimization session. Destroy it after solve so
+  // its replay state has the same bounded lifetime as that session.
+  PredicateEngine(SecureOps& ops, PredicateAuthorizer& authorizer,
                   PredicateBitResolver& resolver)
-      : authorizer_(authorizer), resolver_(resolver) {}
+      : ops_(ops), authorizer_(authorizer), resolver_(resolver) {}
 
   bool pruneNode(const PredicateContext& context,
-                 const EncryptedBit& prune_bit);
+                 const PruneInputs& inputs);
   bool acceptCandidate(const PredicateContext& context,
-                       const EncryptedBit& accept_bit);
+                       const AcceptInputs& inputs);
 
  private:
   bool evaluateFinalBit(const PredicateContext& context,
@@ -62,6 +82,7 @@ class PredicateEngine final {
   static void validate(const PredicateContext& context);
   static std::string replayKey(const PredicateContext& context);
 
+  SecureOps& ops_;
   PredicateAuthorizer& authorizer_;
   PredicateBitResolver& resolver_;
   std::mutex mutex_;

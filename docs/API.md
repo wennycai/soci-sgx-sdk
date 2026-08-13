@@ -12,7 +12,11 @@ Encrypted control predicates are evaluated separately from optimization via
 Only the typed `pruneNode` and `acceptCandidate` entry points are exposed, and
 each operation ID is consumed once per session. The engine returns one
 authorized boolean and does not expose the predicate plaintext or a general
-decryption API.
+decryption API. Callers provide encrypted numeric `PruneInputs` or
+`AcceptInputs`; they cannot provide an already-computed relation bit. The
+engine constructs `linear_upper < 0 || cost_lower > incumbent_cost` for prune,
+and constructs feasibility plus the `(cost, c12)` incumbent ordering for
+acceptance entirely through `SecureOps` before revealing exactly one final bit.
 
 The C++ RAII wrapper is `include/soci/soci.hpp`. Python and Java call only this
 untrusted SDK layer, never ECALLs.

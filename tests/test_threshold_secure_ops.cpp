@@ -43,13 +43,6 @@ class IntegrationAuthorizer final
   }
 };
 
-class TestBitFactory : public soci::secure::SecureOps {
- public:
-  static soci::secure::EncryptedBit make(soci::secure::Ciphertext value) {
-    return encryptedBit(std::move(value));
-  }
-};
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -82,7 +75,7 @@ int main(int argc, char** argv) {
     soci::protocol::ThresholdSecureOps ops(protocol, domain);
     IntegrationAuthorizer authorizer;
     soci::protocol::ThresholdPredicateBitResolver predicate_resolver(protocol);
-    soci::secure::PredicateEngine predicate_engine(authorizer,
+    soci::secure::PredicateEngine predicate_engine(ops, authorizer,
                                                     predicate_resolver);
     std::uint64_t predicate_sequence = 0;
     bool rejected = false;
@@ -107,17 +100,11 @@ int main(int argc, char** argv) {
                  value.bytes.data() + 12);
       return protocol.decryptForTesting(raw);
     };
-    const auto revealBit = [&](const soci::secure::EncryptedBit& value) {
-      const bool accept = ++predicate_sequence % 2 == 0;
-      soci::secure::PredicateContext context{
+    const auto predicateContext = [&](soci::secure::PredicateType type) {
+      return soci::secure::PredicateContext{
           "threshold-sim", "predicate-" + std::to_string(predicate_sequence),
-          accept ? soci::secure::PredicateType::accept_candidate
-                 : soci::secure::PredicateType::prune_node,
+          type,
           3, "node-7"};
-      const bool result = accept
-                              ? predicate_engine.acceptCandidate(context, value)
-                              : predicate_engine.pruneNode(context, value);
-      return result ? mpz_class(1) : mpz_class(0);
     };
 
     stage = "add";
@@ -135,23 +122,27 @@ int main(int argc, char** argv) {
     stage = "negative secureMul";
     require(reveal(ops.secureMul(number(-5), number(3))) == -15,
             "negative secureMul failed");
-    stage = "comparisons";
-    require(revealBit(ops.greaterThan(number(5), number(3))) == 1,
-            "greaterThan true failed");
-    require(revealBit(ops.greaterThan(number(3), number(5))) == 0,
-            "greaterThan false failed");
-    require(revealBit(ops.greaterThan(number(5), number(5))) == 0,
-            "greaterThan equal failed");
-    require(revealBit(ops.lessThan(number(-5), number(3))) == 1,
-            "lessThan failed");
-    require(revealBit(ops.equal(number(-5), number(-5))) == 1,
-            "equal failed");
+    stage = "semantic predicates";
+    ++predicate_sequence;
+    require(predicate_engine.pruneNode(
+                predicateContext(soci::secure::PredicateType::prune_node),
+                {number(-1), number(5), false, {}}),
+            "ratio prune failed");
+    ++predicate_sequence;
+    require(!predicate_engine.pruneNode(
+                predicateContext(soci::secure::PredicateType::prune_node),
+                {number(0), number(10), true, number(10)}),
+            "equal cost pruned");
+    ++predicate_sequence;
+    require(predicate_engine.acceptCandidate(
+                predicateContext(
+                    soci::secure::PredicateType::accept_candidate),
+                {number(0), number(1), number(10), number(5), true,
+                 number(10), number(6)}),
+            "equal-cost better-c12 candidate rejected");
     stage = "composite operations";
     const auto yes = ops.greaterThan(number(5), number(3));
     const auto no = ops.greaterThan(number(3), number(5));
-    require(revealBit(ops.bitNot(yes)) == 0, "bitNot failed");
-    require(revealBit(ops.bitAnd(yes, no)) == 0, "bitAnd failed");
-    require(revealBit(ops.bitOr(yes, no)) == 1, "bitOr failed");
     require(reveal(ops.select(yes, number(11), number(22))) == 11,
             "select failed");
     require(reveal(ops.min(number(9), number(-2))) == -2, "min failed");
@@ -177,9 +168,11 @@ int main(int argc, char** argv) {
                 -boundary_value,
             "negative boundary SMUL failed");
     stage = "boundary comparison";
-    require(
-        revealBit(ops.greaterThan(almost_power_126, negative_boundary)) == 1,
-        "boundary comparison failed");
+    ++predicate_sequence;
+    require(predicate_engine.pruneNode(
+                predicateContext(soci::secure::PredicateType::prune_node),
+                {negative_boundary, almost_power_126, false, {}}),
+            "boundary predicate failed");
 
     rejected = false;
     try {
@@ -224,19 +217,6 @@ int main(int argc, char** argv) {
       rejected = true;
     }
     require(rejected, "excessive NumericDomain was accepted");
-
-    stage = "P rejects non-bit";
-    bool predicate_rejected = false;
-    try {
-      soci::secure::PredicateContext invalid_predicate{
-          "threshold-sim", "non-bit", soci::secure::PredicateType::prune_node,
-          3, "node-7"};
-      (void)predicate_engine.pruneNode(
-          invalid_predicate, TestBitFactory::make(ops.encryptConstant(2)));
-    } catch (const soci::secure::PredicateError&) {
-      predicate_rejected = true;
-    }
-    require(predicate_rejected, "P protocol accepted a non-bit plaintext");
 
     protocol.requestServerShutdown();
     int status = 0;

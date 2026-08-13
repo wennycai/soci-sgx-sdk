@@ -24,5 +24,7 @@ Bytes receiveFrame(int fd);
 int connectTcp(const std::string& host, int port);
 Bytes request(int fd, char operation, const std::vector<mpz_class>& values,
               double* network_microseconds = nullptr);
+Bytes requestPayload(int fd, Bytes payload,
+                     double* network_microseconds = nullptr);
 
 }  // namespace soci::protocol::wire

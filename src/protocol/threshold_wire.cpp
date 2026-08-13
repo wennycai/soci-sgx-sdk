@@ -119,6 +119,10 @@ Bytes request(int fd, char operation, const std::vector<mpz_class>& values,
               double* network_microseconds) {
   Bytes payload{static_cast<std::uint8_t>(operation)};
   for (const auto& value : values) appendInteger(payload, value);
+  return requestPayload(fd, std::move(payload), network_microseconds);
+}
+
+Bytes requestPayload(int fd, Bytes payload, double* network_microseconds) {
   const auto start = Clock::now();
   sendFrame(fd, payload);
   auto reply = receiveFrame(fd);

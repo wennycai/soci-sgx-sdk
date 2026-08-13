@@ -39,7 +39,10 @@ session ID, operation ID, predicate type (`PRUNE_NODE` or
 privileged final-bit resolver is invoked, and `(session_id, operation_id)` is
 single-use even when resolution fails. The threshold resolver uses the
 predicate-only `P` protocol; CSP rejects any combined plaintext other than
-exactly 0 or 1 and never returns general plaintext on that path. This is a capability and
+exactly 0 or 1 and never returns general plaintext on that path. The `P` frame
+carries predicate type, session ID, operation ID, depth, and node ID alongside
+the ciphertext and CP partial share, preserving purpose/context binding at the
+protocol boundary. This is a capability and
 protocol-layer boundary; deployment authorization still depends on the future
 authenticated transport and attestation work listed above.
 

@@ -43,14 +43,36 @@ std::string PredicateEngine::replayKey(const PredicateContext& context) {
 }
 
 bool PredicateEngine::pruneNode(const PredicateContext& context,
-                                const EncryptedBit& prune_bit) {
-  return evaluateFinalBit(context, PredicateType::prune_node, prune_bit);
+                                const PruneInputs& inputs) {
+  const auto zero = ops_.encryptConstant(0);
+  auto final_bit = ops_.lessThan(inputs.linear_upper, zero);
+  if (inputs.has_incumbent) {
+    if (inputs.incumbent_cost.bytes.empty())
+      throw PredicateError("missing incumbent cost");
+    const auto cost_prune =
+        ops_.greaterThan(inputs.cost_lower, inputs.incumbent_cost);
+    final_bit = ops_.bitOr(final_bit, cost_prune);
+  }
+  return evaluateFinalBit(context, PredicateType::prune_node, final_bit);
 }
 
 bool PredicateEngine::acceptCandidate(const PredicateContext& context,
-                                      const EncryptedBit& accept_bit) {
-  return evaluateFinalBit(context, PredicateType::accept_candidate,
-                          accept_bit);
+                                      const AcceptInputs& inputs) {
+  const auto zero = ops_.encryptConstant(0);
+  const auto feasible = ops_.bitAnd(ops_.greaterEqual(inputs.linear, zero),
+                                    ops_.greaterThan(inputs.c3, zero));
+  auto final_bit = feasible;
+  if (inputs.has_incumbent) {
+    if (inputs.incumbent_cost.bytes.empty() ||
+        inputs.incumbent_c12.bytes.empty())
+      throw PredicateError("missing incumbent values");
+    const auto cost_lt = ops_.lessThan(inputs.cost, inputs.incumbent_cost);
+    const auto cost_eq = ops_.equal(inputs.cost, inputs.incumbent_cost);
+    const auto c12_lt = ops_.lessThan(inputs.c12, inputs.incumbent_c12);
+    const auto better = ops_.bitOr(cost_lt, ops_.bitAnd(cost_eq, c12_lt));
+    final_bit = ops_.bitAnd(feasible, better);
+  }
+  return evaluateFinalBit(context, PredicateType::accept_candidate, final_bit);
 }
 
 bool PredicateEngine::evaluateFinalBit(const PredicateContext& context,
@@ -69,7 +91,7 @@ bool PredicateEngine::evaluateFinalBit(const PredicateContext& context,
     if (!consumed_operations_.insert(replayKey(context)).second)
       throw PredicateError("predicate operation replayed");
   }
-  return resolver_.revealFinalBit(final_bit);
+  return resolver_.revealFinalBit(context, final_bit);
 }
 
 }  // namespace soci::secure
