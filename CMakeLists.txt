@@ -42,7 +42,8 @@ endif()
 
 add_library(soci_sdk SHARED
   src/crypto.cpp src/serialization.cpp src/runtime.cpp src/c_api.cpp
-  src/secure_ops.cpp src/predicate_engine.cpp src/optimization.cpp)
+  src/secure_ops.cpp src/predicate_engine.cpp src/optimization.cpp
+  src/encrypted_branch_bound.cpp)
 target_include_directories(soci_sdk PUBLIC include PRIVATE src ${GMP_INCLUDE_DIR})
 target_link_libraries(soci_sdk PRIVATE ${GMPXX_LIBRARY} ${GMP_LIBRARY} OpenSSL::Crypto)
 target_compile_definitions(soci_sdk PRIVATE SOCI_SGX_MODE="${SOCI_SGX_MODE}"
@@ -106,6 +107,11 @@ if(SOCI_SGX_MODE STREQUAL "OFF")
     add_executable(soci_predicate_engine_tests tests/test_predicate_engine.cpp)
     target_link_libraries(soci_predicate_engine_tests PRIVATE soci_sdk)
     add_test(NAME soci_predicate_engine_tests COMMAND soci_predicate_engine_tests)
+    add_executable(soci_encrypted_optimizer_tests
+      tests/test_encrypted_optimizer.cpp)
+    target_link_libraries(soci_encrypted_optimizer_tests PRIVATE soci_sdk)
+    add_test(NAME soci_encrypted_optimizer_tests
+      COMMAND soci_encrypted_optimizer_tests)
   endif()
 else()
   add_test(NAME soci_sgx_cp_lifecycle COMMAND soci_sgx_lifecycle_test
