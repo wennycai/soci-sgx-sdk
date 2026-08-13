@@ -5,13 +5,15 @@
 #include "soci_u.h"
 
 #include <arpa/inet.h>
+#include <cerrno>
 #include <chrono>
 #include <cstring>
 #include <iostream>
 #include <netinet/in.h>
-#include <openssl/rand.h>
+#include <sgx_urts.h>
 #include <stdexcept>
 #include <sys/socket.h>
+#include <sys/random.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -84,11 +86,13 @@ mpz_class combineDecrypt(sgx_enclave_id_t enclave, const mpz_class& cp_share,
   Bytes response(8192);
   std::size_t response_size = 0;
   std::uint32_t result = 0;
-  if (ecall_combine_decrypt(enclave, &result, request.data(), request.size(),
-                            response.data(), response.size(), &response_size) !=
-          SGX_SUCCESS ||
-      result != 0)
-    throw std::runtime_error("combine failed");
+  const auto status = ecall_combine_decrypt(
+      enclave, &result, request.data(), request.size(), response.data(),
+      response.size(), &response_size);
+  if (status != SGX_SUCCESS || result != 0)
+    throw std::runtime_error("combine failed: sgx=" +
+                             std::to_string(status) +
+                             " result=" + std::to_string(result));
   response.resize(response_size);
   return parseEnclaveResponse(response, "SPLN");
 }
@@ -101,7 +105,7 @@ mpz_class loadModulus(const std::string& path) {
 }
 
 void loadShare(sgx_enclave_id_t enclave, const std::string& path) {
-  const auto bytes = wire::readFile(path);
+  auto bytes = wire::readFile(path);
   std::uint32_t result = 0;
   if (ecall_load_sealed_key(enclave, &result, bytes.data(), bytes.size()) !=
           SGX_SUCCESS ||
@@ -144,8 +148,17 @@ secure::Ciphertext decodeCiphertext(const mpz_class& value,
 mpz_class randomBits(unsigned bits) {
   if (bits == 0) return 0;
   std::vector<unsigned char> bytes((bits + 7) / 8);
-  if (RAND_bytes(bytes.data(), static_cast<int>(bytes.size())) != 1)
-    throw std::runtime_error("OpenSSL CSPRNG failure");
+  std::size_t offset = 0;
+  while (offset < bytes.size()) {
+    const auto count =
+        getrandom(bytes.data() + offset, bytes.size() - offset, 0);
+    if (count < 0) {
+      if (errno == EINTR) continue;
+      throw std::runtime_error("getrandom CSPRNG failure");
+    }
+    if (count == 0) throw std::runtime_error("getrandom returned no data");
+    offset += static_cast<std::size_t>(count);
+  }
   const unsigned excess = bytes.size() * 8 - bits;
   if (excess) bytes.front() &= static_cast<unsigned char>(0xffu >> excess);
   mpz_class value;
@@ -161,6 +174,24 @@ mpz_class randomBelow(const mpz_class& limit) {
   do value = randomBits(bits);
   while (value >= limit);
   return value;
+}
+
+template <typename Integer>
+std::uint32_t ceilLog2(Integer value) {
+  if (value <= 1) return 0;
+  --value;
+  std::uint32_t bits = 0;
+  while (value != 0) {
+    value >>= 1;
+    ++bits;
+  }
+  return bits;
+}
+
+std::uint32_t checkedBitSum(std::uint32_t left, std::uint32_t right,
+                            const char* message) {
+  if (right > UINT32_MAX - left) throw std::invalid_argument(message);
+  return left + right;
 }
 }  // namespace
 
@@ -199,9 +230,13 @@ class ThresholdProtocolClient::Impl {
     while (nonce == 0 || gcd(nonce, modulus) != 1);
     mpz_powm(nonce_n.get_mpz_t(), nonce.get_mpz_t(), modulus.get_mpz_t(),
              modulus_squared.get_mpz_t());
-    return ((1 + (plaintext % modulus + modulus) % modulus * modulus) *
-            nonce_n) %
-           modulus_squared;
+    mpz_class normalized = plaintext % modulus;
+    if (normalized < 0) normalized += modulus;
+    mpz_class message_factor = normalized * modulus;
+    message_factor += 1;
+    mpz_class ciphertext = message_factor * nonce_n;
+    ciphertext %= modulus_squared;
+    return ciphertext;
   }
 
   ThresholdMode mode;
@@ -323,21 +358,41 @@ ThresholdMode ThresholdProtocolClient::mode() const noexcept {
 ThresholdSecureOps::ThresholdSecureOps(ThresholdProtocolClient& protocol,
                                        secure::NumericDomain domain)
     : protocol_(protocol), domain_(domain) {
-  constexpr std::uint32_t kProtocolOperandBits = 128;
+  // The 128-bit mask is sampled from [2^127, 2^128).  Keeping every signed
+  // plaintext that can enter SMUL at |x| < 2^127 makes both masked operands
+  // positive and strictly smaller than the 2^130 packing base.
+  constexpr std::uint32_t kSignedPlaintextBits = 127;
+  constexpr std::uint32_t kLinearSignMargin = 1;
   if (domain_.scale <= 0 || domain_.max_rows == 0 ||
       domain_.max_cost_bits == 0 || domain_.max_total_bits == 0 ||
       domain_.max_linear_bits == 0 || domain_.compare_operand_bits == 0)
     throw std::invalid_argument(
         "ThresholdSecureOps requires a complete NumericDomain");
-  if (domain_.max_cost_bits > kProtocolOperandBits ||
-      domain_.max_total_bits > kProtocolOperandBits ||
-      domain_.max_linear_bits > kProtocolOperandBits ||
-      domain_.compare_operand_bits > kProtocolOperandBits)
+
+  const auto required_total_bits = checkedBitSum(
+      domain_.max_cost_bits, ceilLog2(domain_.max_rows),
+      "NumericDomain total bit calculation overflowed");
+  auto required_linear_bits = checkedBitSum(
+      required_total_bits,
+      ceilLog2(static_cast<std::uint64_t>(domain_.scale)),
+      "NumericDomain linear bit calculation overflowed");
+  required_linear_bits = checkedBitSum(
+      required_linear_bits, kLinearSignMargin,
+      "NumericDomain linear bit calculation overflowed");
+  const auto required_compare_bits =
+      std::max(required_total_bits, required_linear_bits);
+
+  if (domain_.max_total_bits < required_total_bits ||
+      domain_.max_linear_bits < required_linear_bits ||
+      domain_.compare_operand_bits < required_compare_bits)
     throw std::invalid_argument(
-        "NumericDomain exceeds the 128-bit protocol bound");
-  if (domain_.max_total_bits < domain_.max_cost_bits ||
-      domain_.max_linear_bits < domain_.max_cost_bits)
-    throw std::invalid_argument("NumericDomain derived bounds are inconsistent");
+        "NumericDomain declared bounds are smaller than derived bounds");
+  if (domain_.max_cost_bits > kSignedPlaintextBits ||
+      domain_.max_total_bits > kSignedPlaintextBits ||
+      domain_.max_linear_bits > kSignedPlaintextBits ||
+      domain_.compare_operand_bits > kSignedPlaintextBits)
+    throw std::invalid_argument(
+        "NumericDomain violates the SMUL invariant |x| < 2^127");
 }
 
 secure::Ciphertext ThresholdSecureOps::encryptConstant(std::int64_t value) {
@@ -426,15 +481,19 @@ int runThresholdCsp(const std::string& enclave_path,
   loadShare(enclave, key_directory + "/csp.sealed");
   const auto modulus = loadModulus(key_directory + "/public.bin");
   const mpz_class modulus_squared = modulus * modulus;
-  auto encrypt = [&](const mpz_class& plaintext) {
+  auto encrypt = [&](const mpz_class& plaintext) -> mpz_class {
     mpz_class nonce, nonce_n;
     do nonce = randomBelow(modulus);
     while (nonce == 0 || gcd(nonce, modulus) != 1);
     mpz_powm(nonce_n.get_mpz_t(), nonce.get_mpz_t(), modulus.get_mpz_t(),
              modulus_squared.get_mpz_t());
-    return ((1 + (plaintext % modulus + modulus) % modulus * modulus) *
-            nonce_n) %
-           modulus_squared;
+    mpz_class normalized = plaintext % modulus;
+    if (normalized < 0) normalized += modulus;
+    mpz_class message_factor = normalized * modulus;
+    message_factor += 1;
+    mpz_class ciphertext = message_factor * nonce_n;
+    ciphertext %= modulus_squared;
+    return ciphertext;
   };
 
   const int listener = socket(AF_INET, SOCK_STREAM, 0);

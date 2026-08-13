@@ -119,7 +119,8 @@ else()
     COMMAND soci_threshold_secure_ops_test
       "${CMAKE_BINARY_DIR}/soci_provisioning_enclave.signed.so"
       "${CMAKE_BINARY_DIR}/soci_cp_enclave.signed.so"
-      "${CMAKE_BINARY_DIR}/soci_csp_enclave.signed.so" "${SOCI_SGX_MODE}")
+      "${CMAKE_BINARY_DIR}/soci_csp_enclave.signed.so" "${SOCI_SGX_MODE}"
+      "$<TARGET_FILE:soci_threshold_runtime>")
   set_tests_properties(soci_sgx_crypto_correctness PROPERTIES TIMEOUT 600)
   set_tests_properties(soci_sgx_threshold_correctness
     soci_threshold_secure_ops_integration PROPERTIES TIMEOUT 600)

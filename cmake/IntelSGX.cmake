@@ -125,7 +125,7 @@ target_include_directories(soci_threshold_protocol PUBLIC
   PRIVATE "${SGX_INCLUDE_DIR}" "${SGX_U_GEN}" "${GMP_INCLUDE_DIR}")
 target_link_directories(soci_threshold_protocol PRIVATE "${SGX_LIBRARY_DIR}")
 target_link_libraries(soci_threshold_protocol PUBLIC
-  ${SGX_URTS} pthread ${GMPXX_LIBRARY} ${GMP_LIBRARY} OpenSSL::Crypto)
+  ${SGX_URTS} pthread ${GMPXX_LIBRARY} ${GMP_LIBRARY})
 if(SOCI_SGX_MODE STREQUAL "HW")
   set_target_properties(soci_threshold_protocol PROPERTIES SKIP_BUILD_RPATH TRUE)
 endif()
@@ -145,6 +145,9 @@ add_executable(soci_threshold_secure_ops_test
   tests/test_threshold_secure_ops.cpp)
 target_include_directories(soci_threshold_secure_ops_test PRIVATE
   "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/include")
+target_link_directories(soci_threshold_secure_ops_test PRIVATE
+  "${SGX_LIBRARY_DIR}")
 target_link_libraries(soci_threshold_secure_ops_test PRIVATE
-  soci_threshold_protocol)
-add_dependencies(soci_threshold_secure_ops_test soci_threshold_protocol)
+  soci_threshold_protocol soci_sdk)
+add_dependencies(soci_threshold_secure_ops_test soci_threshold_protocol
+  soci_threshold_runtime)

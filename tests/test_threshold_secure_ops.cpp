@@ -1,7 +1,6 @@
 #include "protocol/threshold_protocol.hpp"
 
 #include <arpa/inet.h>
-#include <cassert>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -31,10 +30,14 @@ int unusedPort() {
   return port;
 }
 
+void require(bool condition, const char* message) {
+  if (!condition) throw std::runtime_error(message);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 5) return 2;
+  if (argc != 6) return 2;
   const auto mode = std::string(argv[4]) == "SIM"
                         ? soci::protocol::ThresholdMode::sim
                         : soci::protocol::ThresholdMode::hw;
@@ -42,21 +45,21 @@ int main(int argc, char** argv) {
                          ("soci-threshold-ops-" + std::to_string(getpid()));
   std::filesystem::create_directories(directory);
   pid_t server = -1;
+  const char* stage = "provision";
   try {
     soci::protocol::provisionThresholdKeys(argv[1], directory.string(), 3072,
                                            mode);
     const int port = unusedPort();
     server = fork();
     if (server == 0) {
-      try {
-        const int result = soci::protocol::runThresholdCsp(
-            argv[3], directory.string(), port, mode);
-        _exit(result);
-      } catch (...) {
-        _exit(1);
-      }
+      const auto port_string = std::to_string(port);
+      setenv("SOCI_SGX_MODE", argv[4], 1);
+      execl(argv[5], argv[5], "csp", argv[3], directory.c_str(),
+            port_string.c_str(), static_cast<char*>(nullptr));
+      _exit(127);
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    stage = "connect";
     soci::protocol::ThresholdProtocolClient protocol(
         argv[2], directory.string(), "127.0.0.1", port, mode);
     const soci::secure::NumericDomain domain{1'000'000, 100, 32, 48, 64, 64};
@@ -68,42 +71,85 @@ int main(int argc, char** argv) {
     } catch (const std::invalid_argument&) {
       rejected = true;
     }
-    assert(rejected);
+    require(rejected, "raw ciphertext was accepted");
     const auto number = [&](std::int64_t value) {
       return ops.encryptConstant(value);
     };
     const auto reveal = [&](const soci::secure::Ciphertext& value) {
-      assert(value.bytes.size() >= 12);
-      assert(std::memcmp(value.bytes.data(), "SOCI", 4) == 0);
-      assert(value.bytes[4] == 1 && value.bytes[5] == 1);
+      require(value.bytes.size() >= 12, "short canonical ciphertext");
+      require(std::memcmp(value.bytes.data(), "SOCI", 4) == 0,
+              "bad canonical ciphertext magic");
+      require(value.bytes[4] == 1 && value.bytes[5] == 1,
+              "bad canonical ciphertext version/type");
       mpz_class raw;
       mpz_import(raw.get_mpz_t(), value.bytes.size() - 12, 1, 1, 1, 0,
                  value.bytes.data() + 12);
-      return protocol.decryptForTesting(raw).get_si();
+      return protocol.decryptForTesting(raw);
     };
     const auto revealBit = [&](const soci::secure::EncryptedBit& value) {
       return reveal(value.ciphertext());
     };
 
-    assert(reveal(ops.add(number(5), number(3))) == 8);
-    assert(reveal(ops.scalarMul(number(5), -3)) == -15);
-    assert(reveal(ops.secureMul(number(-5), number(3))) == -15);
-    assert(revealBit(ops.greaterThan(number(5), number(3))) == 1);
-    assert(revealBit(ops.greaterThan(number(3), number(5))) == 0);
-    assert(revealBit(ops.greaterThan(number(5), number(5))) == 0);
-    assert(revealBit(ops.lessThan(number(-5), number(3))) == 1);
-    assert(revealBit(ops.equal(number(-5), number(-5))) == 1);
+    stage = "add";
+    require(reveal(ops.add(number(5), number(3))) == 8, "add failed");
+    stage = "negative encrypt";
+    require(reveal(number(-5)) == -5, "negative encrypt failed");
+    stage = "scalarMul";
+    require(reveal(ops.scalarMul(number(5), -3)) == -15,
+            "scalarMul failed");
+    stage = "sub";
+    require(reveal(ops.sub(number(3), number(5))) == -2, "sub failed");
+    stage = "secureMul";
+    require(reveal(ops.secureMul(number(5), number(3))) == 15,
+            "positive secureMul failed");
+    stage = "negative secureMul";
+    require(reveal(ops.secureMul(number(-5), number(3))) == -15,
+            "negative secureMul failed");
+    stage = "comparisons";
+    require(revealBit(ops.greaterThan(number(5), number(3))) == 1,
+            "greaterThan true failed");
+    require(revealBit(ops.greaterThan(number(3), number(5))) == 0,
+            "greaterThan false failed");
+    require(revealBit(ops.greaterThan(number(5), number(5))) == 0,
+            "greaterThan equal failed");
+    require(revealBit(ops.lessThan(number(-5), number(3))) == 1,
+            "lessThan failed");
+    require(revealBit(ops.equal(number(-5), number(-5))) == 1,
+            "equal failed");
+    stage = "composite operations";
     const auto yes = ops.greaterThan(number(5), number(3));
     const auto no = ops.greaterThan(number(3), number(5));
-    assert(revealBit(ops.bitNot(yes)) == 0);
-    assert(revealBit(ops.bitAnd(yes, no)) == 0);
-    assert(revealBit(ops.bitOr(yes, no)) == 1);
-    assert(reveal(ops.select(yes, number(11), number(22))) == 11);
-    assert(reveal(ops.min(number(9), number(-2))) == -2);
-    assert(reveal(ops.max(number(9), number(-2))) == 9);
-    assert(reveal(ops.secureMul(number((std::int64_t{1} << 31) - 1),
-                                number(1))) ==
-           (std::int64_t{1} << 31) - 1);
+    require(revealBit(ops.bitNot(yes)) == 0, "bitNot failed");
+    require(revealBit(ops.bitAnd(yes, no)) == 0, "bitAnd failed");
+    require(revealBit(ops.bitOr(yes, no)) == 1, "bitOr failed");
+    require(reveal(ops.select(yes, number(11), number(22))) == 11,
+            "select failed");
+    require(reveal(ops.min(number(9), number(-2))) == -2, "min failed");
+    require(reveal(ops.max(number(9), number(-2))) == 9, "max failed");
+    // Exercise signed SMUL operands close to the mask boundary.  This value is
+    // 2^126 - 2^63, so both signs remain strictly inside |x| < 2^127.
+    stage = "positive boundary SMUL";
+    const auto power_62 =
+        ops.scalarMul(number(1), std::int64_t{1} << 62);
+    const auto almost_power_126 = ops.add(
+        ops.scalarMul(power_62, INT64_MAX),
+        ops.scalarMul(power_62, INT64_MAX));
+    const mpz_class boundary_value =
+        (mpz_class(1) << 126) - (mpz_class(1) << 63);
+    require(reveal(almost_power_126) == boundary_value,
+            "positive boundary construction failed");
+    require(reveal(ops.secureMul(almost_power_126, number(1))) ==
+                boundary_value,
+            "positive boundary SMUL failed");
+    stage = "negative boundary SMUL";
+    const auto negative_boundary = ops.scalarMul(almost_power_126, -1);
+    require(reveal(ops.secureMul(negative_boundary, number(1))) ==
+                -boundary_value,
+            "negative boundary SMUL failed");
+    stage = "boundary comparison";
+    require(
+        revealBit(ops.greaterThan(almost_power_126, negative_boundary)) == 1,
+        "boundary comparison failed");
 
     rejected = false;
     try {
@@ -111,7 +157,34 @@ int main(int argc, char** argv) {
     } catch (const std::invalid_argument&) {
       rejected = true;
     }
-    assert(rejected);
+    require(rejected, "empty NumericDomain was accepted");
+    rejected = false;
+    try {
+      auto underdeclared = domain;
+      underdeclared.max_total_bits = 38;  // 32 + ceilLog2(100) == 39.
+      soci::protocol::ThresholdSecureOps invalid(protocol, underdeclared);
+    } catch (const std::invalid_argument&) {
+      rejected = true;
+    }
+    require(rejected, "underdeclared total bits were accepted");
+    rejected = false;
+    try {
+      auto underdeclared = domain;
+      underdeclared.max_linear_bits = 59;  // 39 + ceilLog2(1e6) + 1 == 60.
+      soci::protocol::ThresholdSecureOps invalid(protocol, underdeclared);
+    } catch (const std::invalid_argument&) {
+      rejected = true;
+    }
+    require(rejected, "underdeclared linear bits were accepted");
+    rejected = false;
+    try {
+      auto underdeclared = domain;
+      underdeclared.compare_operand_bits = 59;
+      soci::protocol::ThresholdSecureOps invalid(protocol, underdeclared);
+    } catch (const std::invalid_argument&) {
+      rejected = true;
+    }
+    require(rejected, "underdeclared compare bits were accepted");
     rejected = false;
     try {
       auto excessive = domain;
@@ -120,24 +193,32 @@ int main(int argc, char** argv) {
     } catch (const std::invalid_argument&) {
       rejected = true;
     }
-    assert(rejected);
+    require(rejected, "excessive NumericDomain was accepted");
 
     protocol.requestServerShutdown();
     int status = 0;
     waitpid(server, &status, 0);
     server = -1;
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    require(WIFEXITED(status) && WEXITSTATUS(status) == 0,
+            "CSP did not shut down cleanly");
     std::filesystem::remove_all(directory);
     std::cout << "ThresholdSecureOps " << argv[4]
               << " integration tests passed\n";
     return 0;
   } catch (const std::exception& error) {
     if (server > 0) {
-      kill(server, SIGTERM);
-      waitpid(server, nullptr, 0);
+      int status = 0;
+      if (waitpid(server, &status, WNOHANG) == 0) {
+        kill(server, SIGTERM);
+        waitpid(server, &status, 0);
+      }
+      if (WIFSIGNALED(status))
+        std::cerr << "CSP terminated by signal " << WTERMSIG(status) << '\n';
+      else if (WIFEXITED(status))
+        std::cerr << "CSP exited with status " << WEXITSTATUS(status) << '\n';
     }
     std::filesystem::remove_all(directory);
-    std::cerr << error.what() << '\n';
+    std::cerr << "stage " << stage << ": " << error.what() << '\n';
     return 1;
   }
 }

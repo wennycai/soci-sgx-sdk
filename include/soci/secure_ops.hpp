@@ -27,6 +27,9 @@ class EncryptedBit {
 };
 
 struct NumericDomain {
+  // Bit fields bound plaintext magnitudes: a value of b means |x| < 2^b.
+  // ThresholdSecureOps additionally requires every possible SMUL operand to
+  // satisfy |x| < 2^127.
   std::int64_t scale{1'000'000};
   std::size_t max_rows{};
   std::uint32_t max_cost_bits{};
