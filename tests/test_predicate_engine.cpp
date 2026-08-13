@@ -19,16 +19,16 @@ class TestAuthorizer final : public soci::secure::PredicateAuthorizer {
 class RuntimeBitResolver final : public soci::secure::PredicateBitResolver {
  public:
   explicit RuntimeBitResolver(soci::Runtime& runtime) : runtime_(runtime) {}
-  bool resolve(const soci::secure::EncryptedBit& bit) override {
+  std::size_t calls{};
+
+ private:
+  bool revealFinalBit(const soci::secure::EncryptedBit& bit) override {
     ++calls;
     const auto plaintext = runtime_.decrypt(bit.ciphertext().bytes);
     if (plaintext == "0") return false;
     if (plaintext == "1") return true;
     throw soci::secure::PredicateError("encrypted predicate is not a bit");
   }
-  std::size_t calls{};
-
- private:
   soci::Runtime& runtime_;
 };
 
@@ -68,23 +68,23 @@ int main() {
   const auto no = ops.greaterThan(ops.encryptConstant(3),
                                   ops.encryptConstant(5));
 
-  require(engine.evaluate(context("prune-1",
-                                  soci::secure::PredicateType::prune_node),
-                          yes),
+  require(engine.pruneNode(context("prune-1",
+                                   soci::secure::PredicateType::prune_node),
+                           yes),
           "PRUNE_NODE true failed");
-  require(!engine.evaluate(context(
-                               "accept-1",
-                               soci::secure::PredicateType::accept_candidate),
-                           no),
+  require(!engine.acceptCandidate(
+              context("accept-1",
+                      soci::secure::PredicateType::accept_candidate),
+              no),
           "ACCEPT_CANDIDATE false failed");
 
   authorizer.allow = false;
   const auto calls_before_denial = resolver.calls;
   requireRejected(
       [&] {
-        engine.evaluate(context("denied",
-                                soci::secure::PredicateType::prune_node),
-                        yes);
+        engine.pruneNode(context("denied",
+                                 soci::secure::PredicateType::prune_node),
+                         yes);
       },
       "denied predicate was evaluated");
   require(resolver.calls == calls_before_denial,
@@ -92,23 +92,28 @@ int main() {
   authorizer.allow = true;
 
   const auto replay = context("replay", soci::secure::PredicateType::prune_node);
-  require(engine.evaluate(replay, yes), "first replay operation failed");
-  requireRejected([&] { engine.evaluate(replay, yes); },
+  require(engine.pruneNode(replay, yes), "first replay operation failed");
+  requireRejected([&] { engine.pruneNode(replay, yes); },
                   "predicate replay was accepted");
 
   auto duplicate = replay;
   duplicate.depth++;
   duplicate.node_id = "different-node";
-  requireRejected([&] { engine.evaluate(duplicate, yes); },
+  requireRejected([&] { engine.pruneNode(duplicate, yes); },
                   "operation identity was reusable with altered context");
 
   auto invalid = context("invalid", soci::secure::PredicateType::prune_node);
   invalid.session_id.clear();
-  requireRejected([&] { engine.evaluate(invalid, yes); },
+  requireRejected([&] { engine.pruneNode(invalid, yes); },
                   "empty session was accepted");
   invalid = context("invalid-type", static_cast<soci::secure::PredicateType>(9));
-  requireRejected([&] { engine.evaluate(invalid, yes); },
+  requireRejected([&] { engine.pruneNode(invalid, yes); },
                   "unknown predicate type was accepted");
+
+  auto mismatch =
+      context("mismatch", soci::secure::PredicateType::accept_candidate);
+  requireRejected([&] { engine.pruneNode(mismatch, yes); },
+                  "predicate operation/type mismatch was accepted");
 
   std::filesystem::remove_all(directory);
   std::cout << "PredicateEngine authorization tests passed\n";

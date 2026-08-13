@@ -43,6 +43,13 @@ class IntegrationAuthorizer final
   }
 };
 
+class TestBitFactory : public soci::secure::SecureOps {
+ public:
+  static soci::secure::EncryptedBit make(soci::secure::Ciphertext value) {
+    return encryptedBit(std::move(value));
+  }
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -101,11 +108,16 @@ int main(int argc, char** argv) {
       return protocol.decryptForTesting(raw);
     };
     const auto revealBit = [&](const soci::secure::EncryptedBit& value) {
+      const bool accept = ++predicate_sequence % 2 == 0;
       soci::secure::PredicateContext context{
-          "threshold-sim", "predicate-" + std::to_string(++predicate_sequence),
-          soci::secure::PredicateType::prune_node, 3, "node-7"};
-      return predicate_engine.evaluate(context, value) ? mpz_class(1)
-                                                       : mpz_class(0);
+          "threshold-sim", "predicate-" + std::to_string(predicate_sequence),
+          accept ? soci::secure::PredicateType::accept_candidate
+                 : soci::secure::PredicateType::prune_node,
+          3, "node-7"};
+      const bool result = accept
+                              ? predicate_engine.acceptCandidate(context, value)
+                              : predicate_engine.pruneNode(context, value);
+      return result ? mpz_class(1) : mpz_class(0);
     };
 
     stage = "add";
@@ -212,6 +224,19 @@ int main(int argc, char** argv) {
       rejected = true;
     }
     require(rejected, "excessive NumericDomain was accepted");
+
+    stage = "P rejects non-bit";
+    bool predicate_rejected = false;
+    try {
+      soci::secure::PredicateContext invalid_predicate{
+          "threshold-sim", "non-bit", soci::secure::PredicateType::prune_node,
+          3, "node-7"};
+      (void)predicate_engine.pruneNode(
+          invalid_predicate, TestBitFactory::make(ops.encryptConstant(2)));
+    } catch (const soci::secure::PredicateError&) {
+      predicate_rejected = true;
+    }
+    require(predicate_rejected, "P protocol accepted a non-bit plaintext");
 
     protocol.requestServerShutdown();
     int status = 0;

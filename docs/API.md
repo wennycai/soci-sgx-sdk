@@ -9,9 +9,10 @@ Ciphertexts and public keys are versioned binary objects carrying their mode.
 Encrypted control predicates are evaluated separately from optimization via
 `PredicateEngine`. Callers provide a `PredicateContext` containing
 `session_id`, `operation_id`, `predicate_type`, `depth`, and `node_id`.
-Only `PRUNE_NODE` and `ACCEPT_CANDIDATE` are accepted, and each operation ID is
-consumed once per session. The engine returns one authorized boolean and does
-not expose the predicate plaintext or a general decryption API.
+Only the typed `pruneNode` and `acceptCandidate` entry points are exposed, and
+each operation ID is consumed once per session. The engine returns one
+authorized boolean and does not expose the predicate plaintext or a general
+decryption API.
 
 The C++ RAII wrapper is `include/soci/soci.hpp`. Python and Java call only this
 untrusted SDK layer, never ECALLs.

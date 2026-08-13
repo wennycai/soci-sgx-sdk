@@ -343,12 +343,24 @@ mpz_class ThresholdProtocolClient::decryptForTesting(
                                         : plaintext;
 }
 
-bool ThresholdProtocolClient::resolvePredicate(
+bool ThresholdProtocolClient::revealFinalPredicate(
     const mpz_class& encrypted_bit, ProtocolMetrics* metrics) {
-  const auto plaintext = decryptForTesting(encrypted_bit, metrics);
-  if (plaintext != 0 && plaintext != 1)
-    throw secure::PredicateError("encrypted predicate is not a bit");
-  return plaintext == 1;
+  double* cp = metrics ? &metrics->cp_enclave_microseconds : nullptr;
+  double* net = metrics ? &metrics->network_microseconds : nullptr;
+  try {
+    auto reply = wire::request(
+        impl_->socket, 'P',
+        {encrypted_bit,
+         partialDecrypt(impl_->enclave, encrypted_bit, impl_->mode, cp)},
+        net);
+    if (reply.size() != 1 || reply.front() > 1)
+      throw secure::PredicateError("invalid threshold predicate response");
+    return reply.front() == 1;
+  } catch (const secure::PredicateError&) {
+    throw;
+  } catch (const std::exception&) {
+    throw secure::PredicateError("threshold predicate reveal failed");
+  }
 }
 
 void ThresholdProtocolClient::requestServerShutdown() {
@@ -437,9 +449,9 @@ secure::EncryptedBit ThresholdSecureOps::greaterThan(
       protocol_.mode()));
 }
 
-bool ThresholdPredicateBitResolver::resolve(
+bool ThresholdPredicateBitResolver::revealFinalBit(
     const secure::EncryptedBit& bit) {
-  return protocol_.resolvePredicate(
+  return protocol_.revealFinalPredicate(
       encodeCiphertext(bit.ciphertext(), protocol_.mode()));
 }
 
@@ -547,6 +559,14 @@ int runThresholdCsp(const std::string& enclave_path,
               reply, combineDecrypt(enclave, values[1],
                                     partialDecrypt(enclave, values[0], mode),
                                     mode));
+        } else if (operation == 'P' && values.size() == 2) {
+          const auto predicate =
+              combineDecrypt(enclave, values[1],
+                             partialDecrypt(enclave, values[0], mode), mode);
+          if (predicate != 0 && predicate != 1)
+            reply.front() = 1;
+          else
+            reply.push_back(predicate == 1 ? 1 : 0);
         } else if (operation == 'M' && values.size() == 3) {
           if (values[2] <= 1)
             throw std::runtime_error("invalid SMUL packing base");

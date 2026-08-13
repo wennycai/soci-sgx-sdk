@@ -42,9 +42,23 @@ std::string PredicateEngine::replayKey(const PredicateContext& context) {
   return key;
 }
 
-bool PredicateEngine::evaluate(const PredicateContext& context,
-                               const EncryptedBit& bit) {
+bool PredicateEngine::pruneNode(const PredicateContext& context,
+                                const EncryptedBit& prune_bit) {
+  return evaluateFinalBit(context, PredicateType::prune_node, prune_bit);
+}
+
+bool PredicateEngine::acceptCandidate(const PredicateContext& context,
+                                      const EncryptedBit& accept_bit) {
+  return evaluateFinalBit(context, PredicateType::accept_candidate,
+                          accept_bit);
+}
+
+bool PredicateEngine::evaluateFinalBit(const PredicateContext& context,
+                                       PredicateType expected_type,
+                                       const EncryptedBit& final_bit) {
   validate(context);
+  if (context.predicate_type != expected_type)
+    throw PredicateError("predicate context type does not match operation");
   if (!authorizer_.authorize(context))
     throw PredicateError("predicate evaluation denied");
 
@@ -55,7 +69,7 @@ bool PredicateEngine::evaluate(const PredicateContext& context,
     if (!consumed_operations_.insert(replayKey(context)).second)
       throw PredicateError("predicate operation replayed");
   }
-  return resolver_.resolve(bit);
+  return resolver_.revealFinalBit(final_bit);
 }
 
 }  // namespace soci::secure

@@ -39,15 +39,16 @@ class ThresholdProtocolClient {
   // Management/benchmark API only; it is deliberately absent from SecureOps.
   mpz_class decryptForTesting(const mpz_class& ciphertext,
                               ProtocolMetrics* metrics = nullptr);
-  bool resolvePredicate(const mpz_class& encrypted_bit,
-                        ProtocolMetrics* metrics = nullptr);
   void requestServerShutdown();
   const mpz_class& modulus() const noexcept;
   ThresholdMode mode() const noexcept;
 
  private:
+  bool revealFinalPredicate(const mpz_class& encrypted_bit,
+                            ProtocolMetrics* metrics = nullptr);
   class Impl;
   std::unique_ptr<Impl> impl_;
+  friend class ThresholdPredicateBitResolver;
 };
 
 class ThresholdSecureOps final : public secure::SecureOps {
@@ -78,9 +79,8 @@ class ThresholdPredicateBitResolver final
  public:
   explicit ThresholdPredicateBitResolver(ThresholdProtocolClient& protocol)
       : protocol_(protocol) {}
-  bool resolve(const secure::EncryptedBit& bit) override;
-
  private:
+  bool revealFinalBit(const secure::EncryptedBit& bit) override;
   ThresholdProtocolClient& protocol_;
 };
 

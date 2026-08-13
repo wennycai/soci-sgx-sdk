@@ -33,7 +33,10 @@ class PredicateAuthorizer {
 class PredicateBitResolver {
  public:
   virtual ~PredicateBitResolver() = default;
-  virtual bool resolve(const EncryptedBit& bit) = 0;
+
+ private:
+  virtual bool revealFinalBit(const EncryptedBit& bit) = 0;
+  friend class PredicateEngine;
 };
 
 class PredicateError : public Error {
@@ -47,9 +50,15 @@ class PredicateEngine final {
                   PredicateBitResolver& resolver)
       : authorizer_(authorizer), resolver_(resolver) {}
 
-  bool evaluate(const PredicateContext& context, const EncryptedBit& bit);
+  bool pruneNode(const PredicateContext& context,
+                 const EncryptedBit& prune_bit);
+  bool acceptCandidate(const PredicateContext& context,
+                       const EncryptedBit& accept_bit);
 
  private:
+  bool evaluateFinalBit(const PredicateContext& context,
+                        PredicateType expected_type,
+                        const EncryptedBit& final_bit);
   static void validate(const PredicateContext& context);
   static std::string replayKey(const PredicateContext& context);
 
