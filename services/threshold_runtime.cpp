@@ -39,6 +39,12 @@ static mpz_class combine(sgx_enclave_id_t e,const mpz_class&a,const mpz_class&b)
 static gmp_randclass rng(gmp_randinit_default);
 static mpz_class enc(const mpz_class&m,const mpz_class&n){mpz_class ns=n*n,r,c,rn;do r=rng.get_z_range(n);while(r==0||gcd(r,n)!=1);mpz_powm(rn.get_mpz_t(),r.get_mpz_t(),n.get_mpz_t(),ns.get_mpz_t());return ((1+(m%n+n)%n*n)*rn)%ns;}
 static mpz_class signed_m(const mpz_class&m,const mpz_class&n){return m>n/2?m-n:m;}
+static mpz_class add_ct(const mpz_class&a,const mpz_class&b,const mpz_class&ns){return a*b%ns;}
+static mpz_class pow_ct(const mpz_class&c,const mpz_class&k,const mpz_class&ns){
+  mpz_class base=c,exponent=k,out;
+  if(exponent<0){mpz_class inverse;if(!mpz_invert(inverse.get_mpz_t(),base.get_mpz_t(),ns.get_mpz_t()))throw std::runtime_error("ciphertext inverse failed");base=std::move(inverse);exponent=-exponent;}
+  mpz_powm(out.get_mpz_t(),base.get_mpz_t(),exponent.get_mpz_t(),ns.get_mpz_t());return out;
+}
 static int connect_to(const std::string&host,int port){
   const std::string service=std::to_string(port);
   for(int i=0;i<60;i++){
@@ -76,9 +82,25 @@ static int csp(const char*ep,const char*dir,int port){
   for(;;){int fd=accept(ls,nullptr,nullptr);if(fd<0)continue;try{for(;;){Bytes q=frame(fd);if(q.empty())throw std::runtime_error("empty");char op=q[0];size_t p=1;std::vector<mpz_class> z;while(p<q.size())z.push_back(take(q,p));Bytes r{0};
       if(op=='Q'){frame(fd,r);close(fd);close(ls);sgx_destroy_enclave(e);std::cerr<<"CSP stopped after CP completion\n";return 0;}
       if(op=='D'&&z.size()==2){append(r,combine(e,z[1],partial(e,z[0])));}
-      else if((op=='M')&&z.size()==4){mpz_class x=signed_m(combine(e,z[1],partial(e,z[0])),n),y=signed_m(combine(e,z[3],partial(e,z[2])),n);append(r,enc(x*y,n));}
-      else if((op=='A'||op=='C'||op=='V')&&z.size()>=2){mpz_class x=signed_m(combine(e,z[1],partial(e,z[0])),n),v;if(op=='A')v=abs(x);else {mpz_class y=signed_m(combine(e,z[3],partial(e,z[2])),n);if(op=='C')v=(x>=y);else v=(y==0?mpz_class(0):mpz_class(x/y));}append(r,enc(v,n));}
-      else r[0]=1;frame(fd,r);}}catch(...){close(fd);}}
+      else if(op=='M'&&z.size()==3){
+        // SOCI-plus SMUL packs X=x+r1 and Y=y+r2 as C=X^L*Y, so CSP performs
+        // one threshold decryption and sees only the two masked operands.
+        const mpz_class&packed=z[0];const mpz_class&packing_base=z[2];
+        if(packing_base<=1)throw std::runtime_error("invalid SMUL packing base");
+        mpz_class plaintext=combine(e,z[1],partial(e,packed));
+        mpz_class x1=plaintext/packing_base,y1=plaintext%packing_base;
+        append(r,enc(x1*y1,n));
+      }
+      else if(op=='C'&&z.size()==2){
+        // SOCI-plus SCMP: D is a randomized, randomly-oriented difference.
+        // CSP learns only which half of Z_N contains d, never x, y or the
+        // orientation bit selected by CP.
+        mpz_class d=combine(e,z[1],partial(e,z[0]));
+        append(r,enc(d>n/2?0:1,n));
+      }
+      else r[0]=1;frame(fd,r);}}
+      catch(const std::exception&error){std::cerr<<"CSP request rejected: "<<error.what()<<"\n";close(fd);}
+      catch(...){std::cerr<<"CSP request rejected: unknown error\n";close(fd);}}
 }
 struct Samples{std::string name,security;std::vector<double> total,cp,net;bool ok=true;};
 static double pct(std::vector<double>v,double p){std::sort(v.begin(),v.end());return v[std::min(v.size()-1,size_t(std::ceil(p*v.size())-1))];}
@@ -87,14 +109,71 @@ static int benchmark(const char*ep,const char*dir,const std::string&host,int por
   auto e=enclave(ep);init(e,1);load_share(e,std::string(dir)+"/cp.sealed");mpz_class n=load_n(std::string(dir)+"/public.bin"),ns=n*n;
   int fd=connect_to(host,port);rng.seed(std::random_device{}());std::vector<Samples> all;
   auto run=[&](std::string name,std::string sec,auto fn){std::cerr<<"CP benchmark "<<name<<" (warmup="<<warm<<", samples="<<count<<")\n";Samples s{name,sec};for(int i=-warm;i<count;i++){double cp=0,net=0;auto a=Clock::now();bool ok=fn(cp,net);double us=std::chrono::duration<double,std::micro>(Clock::now()-a).count();if(i>=0){s.total.push_back(us);s.cp.push_back(cp);s.net.push_back(net);s.ok&=ok;}}std::cerr<<"CP benchmark "<<name<<" complete\n";all.push_back(std::move(s));};
-  mpz_class x=12345,y=-67,cx=enc(x,n),cy=enc(y,n);
+  // Keep the high bit set: protocol operands are range-bounded, so masked
+  // values stay positive and below the 130-bit packing base.
+  auto random128=[&](){return (mpz_class(1)<<127)+rng.get_z_bits(127);};
+  auto smul=[&](const mpz_class&ax,const mpz_class&ay,double&cp,double&net){
+    mpz_class r1=random128(),r2=random128();
+    mpz_class X=add_ct(ax,enc(r1,n),ns),Y=add_ct(ay,enc(r2,n),ns);
+    // SOCI-plus uses C = X^L * Y.  L=2^130 safely separates the benchmark's
+    // bounded operands after adding 128-bit masks.
+    mpz_class packing_base=mpz_class(1)<<130;
+    mpz_class packed=add_ct(pow_ct(X,packing_base,ns),Y,ns);
+    Bytes reply=request(fd,'M',{packed,partial(e,packed,&cp),packing_base},&net);size_t p=0;
+    mpz_class product=take(reply,p);
+    product=add_ct(product,pow_ct(ax,-r2,ns),ns);
+    product=add_ct(product,pow_ct(ay,-r1,ns),ns);
+    product=add_ct(product,enc(-r1*r2,n),ns);
+    return product;
+  };
+  // SOCI-plus primitive Enc(ax < ay). The public SCMP convention is recovered
+  // as slt(ay, ax), i.e. Enc(ax > ay), matching soci_secure_compare.
+  auto slt=[&](const mpz_class&ax,const mpz_class&ay,double&cp,double&net){
+    mpz_class r3=random128(),r;
+    do r=random128();while(r>=r3);
+    mpz_class r4=n/2-r,difference;bool pi=(rng.get_z_bits(1)!=0);
+    if(!pi){
+      difference=add_ct(ax,pow_ct(ay,n-1,ns),ns);
+      difference=add_ct(pow_ct(difference,r3,ns),enc(r3+r4,n),ns);
+    }else{
+      difference=add_ct(ay,pow_ct(ax,-1,ns),ns);
+      difference=add_ct(pow_ct(difference,r3,ns),enc(r4,n),ns);
+    }
+    if(difference<=0||difference>=ns||gcd(difference,n)!=1)throw std::runtime_error("SCMP produced invalid ciphertext");
+    Bytes reply=request(fd,'C',{difference,partial(e,difference,&cp)},&net);size_t p=0;
+    mpz_class bit=take(reply,p);
+    return pi?add_ct(enc(1,n),pow_ct(bit,-1,ns),ns):bit; // Enc(x < y)
+  };
+  auto sabs=[&](const mpz_class&ax,double&cp,double&net){
+    mpz_class sign=slt(ax,enc(0,n),cp,net);
+    mpz_class factor=add_ct(enc(1,n),pow_ct(sign,-2,ns),ns);
+    return smul(factor,ax,cp,net);
+  };
+  auto sdiv=[&](mpz_class dividend,const mpz_class&divisor,unsigned bits,double&cp,double&net){
+    mpz_class quotient=enc(0,n),one=enc(1,n);
+    for(unsigned step=bits;step-->0;){
+      mpz_class shifted=pow_ct(divisor,mpz_class(1)<<step,ns);
+      mpz_class less=slt(dividend,shifted,cp,net);        // Enc(x < y*2^step)
+      mpz_class take_bit=add_ct(one,pow_ct(less,-1,ns),ns); // Enc(1-less)
+      quotient=add_ct(quotient,pow_ct(take_bit,mpz_class(1)<<step,ns),ns);
+      mpz_class subtraction=smul(take_bit,shifted,cp,net);
+      dividend=add_ct(dividend,pow_ct(subtraction,-1,ns),ns);
+    }
+    return std::make_pair(quotient,dividend);
+  };
+  mpz_class x=12345,y=67,cx=enc(x,n),cy=enc(y,n);
+  auto reveal=[&](const mpz_class&z,double&cp,double&net){Bytes d=request(fd,'D',{z,partial(e,z,&cp)},&net);size_t p=0;return signed_m(take(d,p),n);};
   run("Encrypt","public", [&](double&,double&){return enc(x,n)>0;});
   run("SADD","public", [&](double&,double&){return cx*cy%ns>0;});
   run("ScalarMul","public", [&](double&,double&){mpz_class z;mpz_powm_ui(z.get_mpz_t(),cx.get_mpz_t(),19,ns.get_mpz_t());return z>0;});
   run("Decrypt","threshold", [&](double&cp,double&net){mpz_class u=partial(e,cx,&cp);Bytes r=request(fd,'D',{cx,u},&net);size_t p=0;return signed_m(take(r,p),n)==x;});
-  run("SMUL","masked-threshold", [&](double&cp,double&net){mpz_class mask=rng.get_z_range(n/8)+1,cm=cx*enc(mask,n)%ns,u1=partial(e,cm,&cp),u2=partial(e,cy,&cp);Bytes r=request(fd,'M',{cm,u1,cy,u2},&net);size_t p=0;mpz_class z=take(r,p),rm,ri;mpz_powm(rm.get_mpz_t(),cy.get_mpz_t(),mask.get_mpz_t(),ns.get_mpz_t());if(!mpz_invert(ri.get_mpz_t(),rm.get_mpz_t(),ns.get_mpz_t()))return false;z=z*ri%ns;mpz_class uz=partial(e,z,&cp);Bytes d=request(fd,'D',{z,uz},&net);p=0;return signed_m(take(d,p),n)==x*y;});
-  auto ref=[&](const std::string&name,char op,mpz_class expected){run(name,"experimental_reference_only", [&](double&cp,double&net){std::vector<mpz_class> v{cx,partial(e,cx,&cp)};if(op!='A'){v.push_back(cy);v.push_back(partial(e,cy,&cp));}Bytes r=request(fd,op,v,&net);size_t p=0;mpz_class z=take(r,p),u=partial(e,z,&cp);Bytes d=request(fd,'D',{z,u},&net);p=0;return signed_m(take(d,p),n)==expected;});};
-  ref("SABS",'A',abs(x));ref("SCMP",'C',x>=y);ref("SDIV",'V',x/y);
+  run("SMUL","soci-plus-masked-threshold", [&](double&cp,double&net){return reveal(smul(cx,cy,cp,net),cp,net)==x*y;});
+  run("SCMP","soci-plus-masked-threshold", [&](double&cp,double&net){
+    mpz_class greater=slt(cy,cx,cp,net),equal=slt(cx,cx,cp,net);
+    return reveal(greater,cp,net)==1&&reveal(equal,cp,net)==0;
+  });
+  run("SABS","soci-plus-composed", [&](double&cp,double&net){mpz_class negative=enc(-x,n);return reveal(sabs(negative,cp,net),cp,net)==x;});
+  run("SDIV","soci-plus-composed", [&](double&cp,double&net){auto qr=sdiv(cx,cy,16,cp,net);return reveal(qr.first,cp,net)==x/y&&reveal(qr.second,cp,net)==x%y;});
   std::cout<<"{\n  \"mode\":\""<<mode_name()<<"\",\"architecture\":\"CP/CSP dual process\",\"security_bits\":128,\"modulus_bits\":"<<mpz_sizeinbase(n.get_mpz_t(),2)<<",\"warmup\":"<<warm<<",\"metrics\":[\n";
   for(size_t i=0;i<all.size();i++){json(all[i]);std::cout<<(i+1==all.size()?"\n":",\n");}std::cout<<"  ]\n}\n";
   request(fd,'Q',{});

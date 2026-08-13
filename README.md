@@ -240,9 +240,10 @@ CSP；两者可以映射同一个宿主 `/dev/sgx_enclave`。默认每项协议�
 
 结果逐项包含 Encrypt、SADD、ScalarMul、阈值 Decrypt、SMUL、SCMP、
 SABS、SDIV 的 mean/P50/P95、CP Enclave 时间、CSP 往返时间和正确性。
-SCMP、SABS、SDIV 当前标记为 `experimental_reference_only`，因为参考协议
-会向 CSP 暴露参与运算的明文或中间值；这些数据只能用于性能基线。SMUL
-使用随机掩码和 CP/CSP 阈值解密。
+SIM/HW 的 SMUL、SCMP、SABS、SDIV 使用 SOCI-plus 半诚实协议结构和 CP/CSP
+阈值解密：SMUL 双输入掩码并按 `X^L · Y` 打包，SCMP 随机化并随机翻转差值，SABS 组合 SCMP 与
+SMUL，SDIV 逐位组合 SCMP 与 SMUL。CSP 不再获得 SCMP/SDIV 的原始操作数。
+OFF 中同名算子仍是 `experimental_reference_only` 的解密—计算—重加密基线。
 
 默认参数为 KeyGen 预热 20 次、统计 30 次，解密预热 10 次、统计 100 次。
 可以在运行前覆盖：

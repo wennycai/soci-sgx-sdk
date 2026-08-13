@@ -1,0 +1,1 @@
+.run-button.loading b{animation:spin .9s linear infinite}.run-state:not(.error){transition:.2s}.logic-list li.active{animation:workingPulse 1.15s ease-in-out infinite}@keyframes spin{to{transform:rotate(360deg)}}@keyframes workingPulse{50%{filter:brightness(.92);box-shadow:inset 3px 0 var(--blue)}}

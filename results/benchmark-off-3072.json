@@ -1,14 +1,14 @@
 {
   "mode":"OFF",
   "modulus_bits":3072,
-  "note":"experimental secure operations use decrypt-compute-encrypt and are OFF reference-only",
+  "note":"OFF protocol simulator: SMUL and SCMP follow SOCI-plus masking; SSBA/SABS and 21-bit SDIV are composed from those protocols",
   "results":[
-    {"operation":"KEYGEN","samples":3,"mean_ms":79.288603,"p50_ms":81.549335,"p95_ms":81.549335,"min_ms":49.134432,"max_ms":107.182041,"correct":true},
-    {"operation":"ENCRYPT","samples":50,"mean_ms":26.929443,"p50_ms":26.221935,"p95_ms":28.430423,"min_ms":25.490073,"max_ms":40.228450,"correct":true},
-    {"operation":"DECRYPT","samples":50,"mean_ms":26.832080,"p50_ms":26.546614,"p95_ms":28.865952,"min_ms":25.338315,"max_ms":30.867375,"correct":true},
-    {"operation":"SMUL","samples":50,"mean_ms":81.151103,"p50_ms":79.373079,"p95_ms":85.937699,"min_ms":75.837776,"max_ms":123.603004,"correct":true},
-    {"operation":"SCMP","samples":50,"mean_ms":80.362698,"p50_ms":78.451079,"p95_ms":83.063678,"min_ms":75.333123,"max_ms":120.350441,"correct":true},
-    {"operation":"SABS","samples":50,"mean_ms":53.639636,"p50_ms":52.452434,"p95_ms":58.018868,"min_ms":50.999066,"max_ms":77.738246,"correct":true},
-    {"operation":"SDIV","samples":50,"mean_ms":163.979595,"p50_ms":159.306554,"p95_ms":209.755508,"min_ms":152.586567,"max_ms":213.150917,"correct":true}
+    {"operation":"KEYGEN","samples":3,"mean_ms":72.747880,"p50_ms":61.717305,"p95_ms":61.717305,"min_ms":45.082525,"max_ms":111.443809,"correct":true},
+    {"operation":"ENCRYPT","samples":3,"mean_ms":35.454748,"p50_ms":30.736222,"p95_ms":30.736222,"min_ms":29.769642,"max_ms":45.858380,"correct":true},
+    {"operation":"DECRYPT","samples":3,"mean_ms":30.462403,"p50_ms":30.146550,"p95_ms":30.146550,"min_ms":29.444977,"max_ms":31.795683,"correct":true},
+    {"operation":"SMUL","samples":3,"mean_ms":233.874547,"p50_ms":233.699050,"p95_ms":233.699050,"min_ms":230.165501,"max_ms":237.759089,"correct":true},
+    {"operation":"SCMP","samples":3,"mean_ms":116.981335,"p50_ms":117.113761,"p95_ms":117.113761,"min_ms":116.003971,"max_ms":117.826272,"correct":true},
+    {"operation":"SABS","samples":3,"mean_ms":436.694184,"p50_ms":435.052282,"p95_ms":435.052282,"min_ms":433.799080,"max_ms":441.231189,"correct":true},
+    {"operation":"SDIV","samples":3,"mean_ms":4512.942353,"p50_ms":4495.113039,"p95_ms":4495.113039,"min_ms":4485.655505,"max_ms":4558.058515,"correct":true}
   ]
 }

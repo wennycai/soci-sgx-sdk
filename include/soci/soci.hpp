@@ -8,8 +8,10 @@ class Error : public std::runtime_error { public: using std::runtime_error::runt
 class Runtime {
  public:
   explicit Runtime(const std::string& dir) { check(soci_runtime_create(dir.c_str(), &p_)); }
-  ~Runtime() { soci_runtime_close(p_); }
+  ~Runtime() { if(owns_) soci_runtime_close(p_); }
   Runtime(const Runtime&)=delete; Runtime& operator=(const Runtime&)=delete;
+  // Language bindings may temporarily borrow their already-owned C handle.
+  static Runtime borrowed(soci_runtime_t* p) { if(!p) throw Error("invalid runtime"); return Runtime(p,false); }
   soci_mode_t mode() const { return soci_runtime_get_mode(p_); }
   void create_key(const std::string& id, uint32_t bits=SOCI_SECURITY_128_MODULUS_BITS) { check(soci_create_key(p_,id.c_str(),bits,SOCI_ROLE_FULL)); }
   void open_key(const std::string& id) { check(soci_open_key(p_,id.c_str(),SOCI_ROLE_FULL)); }
@@ -29,7 +31,9 @@ class Runtime {
   }
   soci_runtime_t* native() const { return p_; }
  private:
+  Runtime(soci_runtime_t* p,bool owns):p_(p),owns_(owns){}
   soci_runtime_t* p_{};
+  bool owns_{true};
   void check(soci_status_t s) const { if(s!=SOCI_OK) throw Error(soci_runtime_get_last_error(p_)); }
   template<class F> std::vector<uint8_t> bytes(F f) { size_t n=0; auto s=f(nullptr,&n); if(s!=SOCI_BUFFER_TOO_SMALL)check(s); for(int i=0;i<3;i++){std::vector<uint8_t> o(n);s=f(o.data(),&n);if(s==SOCI_OK){o.resize(n);return o;}if(s!=SOCI_BUFFER_TOO_SMALL)check(s);}throw Error("output size changed repeatedly"); }
 };

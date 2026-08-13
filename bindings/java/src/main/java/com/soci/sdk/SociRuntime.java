@@ -14,6 +14,9 @@ public final class SociRuntime implements AutoCloseable {
   public synchronized byte[] secureSignBit(byte[] a){check();return nativeUnary(handle,0,a);}
   public synchronized byte[] secureAbs(byte[] a){check();return nativeUnary(handle,1,a);}
   public synchronized SociDivisionResult secureDiv(byte[] a,byte[] b){check();byte[][] v=nativeDiv(handle,a,b);return new SociDivisionResult(new SociCiphertext(v[0]),new SociCiphertext(v[1]));}
+  synchronized OptimizationResult optimize(Double[][] costs,double ratioThreshold){check();return nativeOptimize(handle,costs,ratioThreshold);}
+  synchronized OptimizationResult optimizeCsv(String path,double ratioThreshold){check();return nativeOptimizeCsv(handle,path,ratioThreshold);}
+  synchronized byte[][] optimizeEncrypted(byte[][][] costs,double ratioThreshold){check();return nativeOptimizeEncrypted(handle,costs,ratioThreshold);}
   @Override public synchronized void close(){if(handle!=0){nativeClose(handle);handle=0;}}
   private static native long nativeCreate(String dir); private static native void nativeClose(long h);
   private static native void nativeCreateKey(long h,String id,int bits);
@@ -22,4 +25,7 @@ public final class SociRuntime implements AutoCloseable {
   private static native byte[] nativeUnary(long h,int op,byte[] a);
   private static native byte[] nativeScalarMul(long h,byte[] a,String k);
   private static native byte[][] nativeDiv(long h,byte[] a,byte[] b);
+  private static native OptimizationResult nativeOptimize(long h,Double[][] costs,double ratioThreshold);
+  private static native OptimizationResult nativeOptimizeCsv(long h,String path,double ratioThreshold);
+  private static native byte[][] nativeOptimizeEncrypted(long h,byte[][][] costs,double ratioThreshold);
 }

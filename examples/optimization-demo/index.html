@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>基于Paillier加密的本地化率优化工具</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="mode-nav.css">
+  <link rel="stylesheet" href="progress.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html"><span class="brand-mark">S</span><span>本地化率<b>优化工具</b></span></a>
+    <div class="top-actions"><nav class="mode-nav" aria-label="模式切换"><a class="active" href="index.html">双通道模式</a><a href="workflow.html">双角色模式</a></nav><span class="status"><i></i> 系统运行正常</span><button id="themeButton" class="icon-button" aria-label="切换主题">◐</button></div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div><p class="eyebrow">PAILLIER ENCRYPTED OPTIMIZATION</p><h1>基于Paillier加密的<br><em>本地化率优化工具</em></h1></div>
+      <div class="hero-copy"><p>面向数据提供方与数据使用方的安全协作系统，实现成本数据加密、本地化率约束优化和结果授权解密。</p><div class="legend"><span><i class="dot raw"></i>明文可见</span><span><i class="dot cipher"></i>密文不可读</span><span><i class="dot enclave"></i>仅最终授权解密</span></div></div>
+    </section>
+
+    <section class="workspace compare-workspace">
+      <aside class="panel input-panel">
+        <div class="panel-head"><div><p class="step-label">INPUT MATRIX</p><h2>成本数据</h2></div><button id="resetButton" class="text-button">恢复示例</button></div>
+        <p class="hint">每行一种物料；留空表示该方式不可用。</p>
+        <div class="table-wrap"><table id="costTable"><thead><tr><th>物料</th><th>方式 1</th><th>方式 2</th><th>方式 3</th></tr></thead><tbody></tbody></table></div>
+        <button id="addRowButton" class="add-button">＋ 添加物料</button>
+        <div class="threshold-block"><div class="threshold-title"><label for="threshold">本地化率阈值</label><output id="thresholdValue">0.50</output></div><input id="threshold" type="range" min="0" max="0.99" step="0.01" value="0.5"><div class="range-label"><span>0</span><span>ratio ≥ threshold</span><span>0.99</span></div></div>
+        <button id="runButton" class="run-button"><span>同时运行两条路径</span><b>→</b></button>
+      </aside>
+
+      <section class="comparison">
+        <div class="compare-header"><div><p class="step-label">SIDE-BY-SIDE EXECUTION</p><h2>计算路径对比</h2></div><span id="runState" class="run-state">等待运行</span></div>
+        <div class="channel-grid">
+          <article class="channel plain-channel">
+            <div class="channel-head"><div><span class="channel-index">A</span><div><b>明文计算</b><small>PLAINTEXT BASELINE</small></div></div><span class="exposure danger">数据可见</span></div>
+            <div class="data-window"><div class="window-bar"><span>输入快照</span><em>开发方可直接读取</em></div><div id="plainPreview" class="matrix-preview plain-preview">等待输入…</div></div>
+            <ol class="logic-list">
+              <li data-plain-step="1"><i>01</i><div><b>读取明文成本</b><span>直接访问 c[i,j] 数值</span></div></li>
+              <li data-plain-step="2"><i>02</i><div><b>分支定界</b><span>明文比较目标与 ratio</span></div></li>
+              <li data-plain-step="3"><i>03</i><div><b>直接输出结果</b><span>无需密码协议</span></div></li>
+            </ol>
+            <div class="perf-box"><span>浏览器求解实测 <button class="info" title="同一模型在当前浏览器重复执行后的中位耗时">?</button></span><strong id="plainTime">—</strong><small id="plainPerfNote">运行后显示</small></div>
+          </article>
+
+          <article class="channel cipher-channel">
+            <div class="channel-head"><div><span class="channel-index">B</span><div><b>密态计算</b><small>SOCI SECURE PIPELINE</small></div></div><span class="exposure safe">成本不可读</span></div>
+            <div class="data-window cipher-window"><div class="window-bar"><span>加密快照</span><em>计算方仅看到密文</em></div><div id="cipherPreview" class="matrix-preview cipher-preview">等待加密…</div></div>
+            <ol class="logic-list secure-list">
+              <li data-secure-step="1"><i>01</i><div><b>定点编码 + Paillier 加密</b><span id="encryptDetail">Enc(c[i,j])</span></div></li>
+              <li data-secure-step="2"><i>02</i><div><b>分支定界 + 同态聚合</b><span>候选聚合值不解密</span></div></li>
+              <li data-secure-step="3"><i>03</i><div><b>SCMP 验证 ratio</b><span>(S−T)·C₁₂ ≥ T·C₃</span></div></li>
+              <li data-secure-step="4"><i>04</i><div><b>Enclave 授权解密</b><span>仅揭示最终结果</span></div></li>
+            </ol>
+            <div class="perf-box secure-perf"><span>Paillier 加密计算耗时 <button class="info" title="从数据加密到优化结果生成的端到端耗时">?</button></span><strong id="secureTime">—</strong><small id="securePerfNote">运行后显示实际耗时</small></div>
+          </article>
+        </div>
+        <div class="workload-strip"><span><b id="visitedNodes">—</b>访问节点</span><span><b id="prunedNodes">—</b>剪枝节点</span><span><b id="candidateCount">—</b>可行叶节点</span><span><b id="encryptedCells">—</b>加密成本</span></div>
+        <div class="disclaimer"><b>数据说明</b><span>成本数据经过 Paillier 加密后参与优化计算，页面展示加密数据、计算过程和最终结果的一致性。</span></div>
+      </section>
+    </section>
+
+    <section id="resultSection" class="results hidden">
+      <div class="result-title"><div><p class="eyebrow">RESULT CONSISTENCY</p><h2>结果一致性验证</h2></div><span class="optimal-badge">✓ EXACT MATCH</span></div>
+      <div class="match-panel"><div><span>明文结果</span><b id="plainSolution">—</b></div><i>＝</i><div><span>密态授权结果</span><b id="secureSolution">—</b></div><em>100% 一致</em></div>
+      <div class="result-grid"><article><span>最小总成本 · 两端一致</span><strong id="totalCost">—</strong><small>成本单位</small></article><article><span>最终本地化率 · 两端一致</span><strong id="ratioResult">—</strong><div class="ratio-bar"><i id="ratioFill"></i><em id="thresholdMarker"></em></div></article><article><span>性能额外开销（实测）</span><strong id="overheadResult">—</strong><small id="constraintText">密态换取成本数据机密性</small></article></div>
+      <div class="solution-card"><div class="solution-head"><h3>物料选择明细</h3><button id="copyButton" class="text-button">复制结果</button></div><div id="solutionList" class="solution-list"></div><div class="formula"><span>C₁₂</span><b id="c12Value">—</b><i>＋</i><span>C₃</span><b id="c3Value">—</b><i>＝</i><span>总成本</span><b id="formulaTotal">—</b></div></div>
+    </section>
+  </main>
+  <footer><span>SOCI SGX SDK · Interactive Demonstration</span><span>Fixed m = 3 · Branch &amp; Bound · Paillier</span></footer>
+  <script src="app.js"></script>
+</body>
+</html>

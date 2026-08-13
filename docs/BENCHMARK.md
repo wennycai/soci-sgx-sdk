@@ -11,9 +11,17 @@
 每项记录样本数、平均值、P50、
 P95、最小/最大毫秒数和结果正确性。
 
-当前 OFF benchmark 中，SMUL、SCMP、SDIV、SABS 是明确标记的
-experimental/reference-only 解密—计算—重加密实现。它用于 API、正确性和
-性能回归，不代表原论文协议性能，也不代表 SGX 性能或生产安全性。
+当前 OFF benchmark 是 SOCI-plus 协议功能模拟：SMUL 解密双掩码操作数，
+SCMP 只解密随机换向和缩放后的差值，SSBA/SABS 组合 SCMP 与 SMUL，SDIV
+逐位组合 SCMP 与 SMUL。OFF 单进程持有完整测试密钥，因此只用于 API、协议
+代数正确性和性能回归，不代表双方隔离部署的安全性或 SGX 性能。
+
+SIM/HW 的 CP/CSP benchmark 使用 SOCI-plus 协议编排：SMUL 对两个输入分别
+添加 128-bit 随机掩码，再以 `C = X^L · Y` 打包后执行一次阈值解密；SCMP
+向 CSP 发送随机方向、随机比例隐藏后的差值；
+SABS 组合 SCMP 与 SMUL；SDIV 逐位组合 SCMP 与 SMUL并返回密文商和余数。
+安全标签为 `soci-plus-masked-threshold` 或 `soci-plus-composed`。这些标签
+表示半诚实协议结构，不表示已经具备恶意安全、重放保护或侧信道加固。
 
 SIM 密码学测试：
 

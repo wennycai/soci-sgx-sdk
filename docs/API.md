@@ -8,3 +8,20 @@ Ciphertexts and public keys are versioned binary objects carrying their mode.
 
 The C++ RAII wrapper is `include/soci/soci.hpp`. Python and Java call only this
 untrusted SDK layer, never ECALLs.
+
+## Optimization operator
+
+`include/soci/optimization.hpp` provides the fixed `n x 3` optimization model.
+Costs are decimal strings (up to six fractional digits) or `std::nullopt` for an
+unavailable method. `soci::optimization::Optimizer` encrypts the cost matrix and
+uses homomorphic addition/scalar multiplication to verify the authorized final
+result. `optimize_plain` is the independent reference solver.
+
+The model follows PuLP `LpProblem` semantics: one binary variable `x[i,j]` per
+available method, an exactly-one constraint for every row, a linear minimum-cost
+objective, and the linearized ratio constraint. The implementation solves that
+model with deterministic branch-and-bound and suffix bounds; it does not depend
+on Python or PuLP at runtime.
+
+Python exposes `Optimizer`, `OptimizationResult`, `optimize_plain`, and
+`optimize_csv_plain`. Java exposes `SociOptimizer` and `OptimizationResult`.
