@@ -147,6 +147,7 @@ int main(int argc, char** argv) {
       request.session_id = "benchmark-lagrangian-" +
                            std::to_string(requested_k);
       soci::optimization::EncryptedBranchAndBoundConfig config;
+      config.cost_bound = soci::optimization::EncryptedCostBound::lagrangian;
       // D=16 provides enough distinct normalized rho points for K=9 while
       // remaining inside this benchmark's declared NumericDomain.
       config.lagrangian_grid.denominator = 16;

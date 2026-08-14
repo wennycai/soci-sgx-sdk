@@ -144,6 +144,7 @@ class Harness {
     current.cost_bound =
         soci::optimization::EncryptedCostBound::current_suffix;
     soci::optimization::EncryptedBranchAndBoundConfig zero_mu;
+    zero_mu.cost_bound = soci::optimization::EncryptedCostBound::lagrangian;
     zero_mu.lagrangian_grid.requested_size = 1;
     const auto current_result = solve(rows, threshold, current);
     const auto zero_mu_result = solve(rows, threshold, zero_mu);
@@ -158,7 +159,10 @@ class Harness {
             current_result.stats.candidate_count ==
                 zero_mu_result.stats.candidate_count,
             label + ": mu=0 search tree differs from current suffix");
-    compare(rows, threshold, label + "-lagrangian");
+    soci::optimization::EncryptedBranchAndBoundConfig lagrangian;
+    lagrangian.cost_bound =
+        soci::optimization::EncryptedCostBound::lagrangian;
+    compare(rows, threshold, label + "-lagrangian", lagrangian);
   }
 
   std::int64_t decrypt(const soci::secure::Ciphertext& value) {

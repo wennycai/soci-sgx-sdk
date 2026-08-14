@@ -44,7 +44,10 @@ parameters: `denominator`, `requested_size` (1 through 16), and `span_factor`.
 The builder uses `Q = SCALE * denominator`, represents `mu` as an integer, and
 always includes zero. A threshold of zero reduces the grid to `{0}`. Grid
 parameters affect only performance, not feasibility, optimality, DFS order, or
-tie-breaking. The default production facade uses the Lagrangian mode.
+tie-breaking. Production defaults to `current_suffix`; Lagrangian is an
+explicit opt-in because the current benchmark reduces nodes but increases
+end-to-end latency. `ThresholdConfidentialConfig::solver_config` exposes the
+same choice and grid parameters to SIM/HW callers.
 
 `EncryptedOptimizationStats` reports visited/pruned/candidate and predicate
 counts plus preprocessing, search, and total seconds. Timing and structural

@@ -118,3 +118,9 @@ The solver has no decryptor or predicate resolver. `PredicateEngine` remains
 the sole PRUNE/ACCEPT control-flow reveal boundary. The old
 `Optimizer::optimize_encrypted` remains OFF-only compatibility code and cannot
 enter SIM/HW production wiring.
+
+Production defaults to the current suffix bound. Lagrangian pruning is enabled
+explicitly through `EncryptedBranchAndBoundConfig`; SIM/HW callers pass that
+configuration through `ThresholdConfidentialConfig::solver_config`. This
+conservative default reflects the measured result that K=3 reduces search
+nodes but currently increases total protocol time.

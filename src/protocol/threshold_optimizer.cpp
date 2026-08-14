@@ -18,7 +18,8 @@ class ThresholdConfidentialRuntime::Impl {
             checkedPort(config.csp_port), protocolMode(config.mode)),
         ops_(protocol_, config.numeric_domain),
         resolver_(protocol_),
-        optimizer_({ops_, authorizer, resolver_}) {}
+        optimizer_({ops_, authorizer, resolver_,
+                    std::move(config.solver_config)}) {}
 
   EncryptedBranchAndBoundResult optimize(
       const EncryptedOptimizationRequest& request) {

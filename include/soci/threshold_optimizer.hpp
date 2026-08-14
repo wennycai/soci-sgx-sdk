@@ -17,6 +17,7 @@ struct ThresholdConfidentialConfig {
   int csp_port{};
   ThresholdExecutionMode mode{ThresholdExecutionMode::hw};
   secure::NumericDomain numeric_domain;
+  EncryptedBranchAndBoundConfig solver_config{};
 };
 
 // Production Threshold wiring. Protocol and resolver implementation details

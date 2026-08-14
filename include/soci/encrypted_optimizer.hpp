@@ -31,6 +31,8 @@ struct EncryptedOptimizationStats {
   std::uint64_t candidate_count{};
   std::uint64_t prune_predicates{};
   std::uint64_t accept_predicates{};
+  std::uint64_t multi_bound_prune_nodes{};
+  std::uint64_t objective_bound_comparisons{};
   double preprocessing_seconds{};
   double search_seconds{};
   double total_seconds{};
@@ -42,7 +44,9 @@ enum class EncryptedCostBound : std::uint8_t {
 };
 
 struct EncryptedBranchAndBoundConfig {
-  EncryptedCostBound cost_bound{EncryptedCostBound::lagrangian};
+  // Lagrangian is opt-in until its extra protocols show an end-to-end win for
+  // the deployment workload.
+  EncryptedCostBound cost_bound{EncryptedCostBound::current_suffix};
   LagrangianGridConfig lagrangian_grid;
 };
 
