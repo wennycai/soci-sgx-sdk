@@ -13,7 +13,7 @@ inline constexpr std::size_t kMaxLagrangianGridSize = 16;
 
 // rho = lambda * SCALE = mu / denominator, and Q = SCALE * denominator.
 struct LagrangianGridConfig {
-  std::int64_t denominator{1024};
+  std::int64_t denominator{1};
   std::size_t requested_size{5};
   std::int64_t span_factor{2};
 };

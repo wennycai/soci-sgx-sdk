@@ -54,42 +54,104 @@ EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
     if (!available) invalid("every row must have an available method");
   }
 
+  const bool use_lagrangian =
+      config_.cost_bound == EncryptedCostBound::lagrangian;
+  if (!use_lagrangian &&
+      config_.cost_bound != EncryptedCostBound::current_suffix)
+    invalid("invalid encrypted cost-bound mode");
+  // Grid and NumericDomain validation is entirely public and must finish
+  // before the first encryption or secure protocol operation.
+  std::optional<LagrangianGrid> grid;
+  if (use_lagrangian)
+    grid = buildLagrangianGrid(domain, request.threshold_scaled,
+                               config_.lagrangian_grid);
+
   const std::size_t n = request.costs.size();
   const std::int64_t positive = domain.scale - request.threshold_scaled;
   const std::int64_t negative = -request.threshold_scaled;
   const auto zero = ops_.encryptConstant(0);
 
+  using MethodCiphertexts =
+      std::array<std::optional<secure::Ciphertext>, 3>;
+  using MethodScores = std::array<std::vector<secure::Ciphertext>, 3>;
+  std::vector<MethodCiphertexts> method_linear(n);
+  std::vector<MethodScores> method_scores(n);
   std::vector<secure::Ciphertext> row_min_cost;
   std::vector<secure::Ciphertext> row_max_linear;
-  row_min_cost.reserve(n);
+  std::vector<std::vector<secure::Ciphertext>> row_lagrangian_lb;
+  if (use_lagrangian)
+    row_lagrangian_lb.resize(
+        n, std::vector<secure::Ciphertext>(grid->mu.size()));
+  else
+    row_min_cost.reserve(n);
   row_max_linear.reserve(n);
-  for (const auto& row : request.costs) {
+  for (std::size_t i = 0; i < n; ++i) {
+    const auto& row = request.costs[i];
     std::optional<secure::Ciphertext> minimum;
     std::optional<secure::Ciphertext> maximum;
     for (std::size_t method = 0; method < row.methods.size(); ++method) {
       if (!row.methods[method]) continue;
       const auto& cost = *row.methods[method];
-      minimum = minimum ? ops_.min(*minimum, cost) : cost;
       const auto contribution =
           ops_.scalarMul(cost, method < 2 ? positive : negative);
+      method_linear[i][method] = contribution;
       maximum = maximum ? ops_.max(*maximum, contribution) : contribution;
+      if (!use_lagrangian) {
+        minimum = minimum ? ops_.min(*minimum, cost) : cost;
+        continue;
+      }
+      const auto scaled_cost = ops_.scalarMul(cost, grid->q);
+      auto& scores = method_scores[i][method];
+      scores.reserve(grid->mu.size());
+      for (const auto mu : grid->mu) {
+        scores.push_back(mu == 0
+                             ? scaled_cost
+                             : ops_.sub(scaled_cost,
+                                        ops_.scalarMul(contribution, mu)));
+      }
     }
-    row_min_cost.push_back(std::move(*minimum));
+    if (use_lagrangian) {
+      for (std::size_t k = 0; k < grid->mu.size(); ++k) {
+        std::optional<secure::Ciphertext> lower;
+        for (std::size_t method = 0; method < row.methods.size(); ++method) {
+          if (!row.methods[method]) continue;
+          const auto& score = method_scores[i][method][k];
+          lower = lower ? ops_.min(*lower, score) : score;
+        }
+        row_lagrangian_lb[i][k] = std::move(*lower);
+      }
+    } else {
+      row_min_cost.push_back(std::move(*minimum));
+    }
     row_max_linear.push_back(std::move(*maximum));
   }
 
-  std::vector<secure::Ciphertext> min_cost_suffix(n + 1);
+  std::vector<secure::Ciphertext> min_cost_suffix;
+  std::vector<std::vector<secure::Ciphertext>> lagrangian_suffix;
+  if (use_lagrangian) {
+    lagrangian_suffix.resize(
+        n + 1, std::vector<secure::Ciphertext>(grid->mu.size(), zero));
+    for (std::size_t i = n; i-- > 0;)
+      for (std::size_t k = 0; k < grid->mu.size(); ++k)
+        lagrangian_suffix[i][k] =
+            ops_.add(row_lagrangian_lb[i][k], lagrangian_suffix[i + 1][k]);
+  } else {
+    min_cost_suffix.resize(n + 1);
+    min_cost_suffix[n] = zero;
+    for (std::size_t i = n; i-- > 0;)
+      min_cost_suffix[i] =
+          ops_.add(row_min_cost[i], min_cost_suffix[i + 1]);
+  }
   std::vector<secure::Ciphertext> max_linear_suffix(n + 1);
-  min_cost_suffix[n] = zero;
   max_linear_suffix[n] = zero;
   for (std::size_t i = n; i-- > 0;) {
-    min_cost_suffix[i] = ops_.add(row_min_cost[i], min_cost_suffix[i + 1]);
     max_linear_suffix[i] =
         ops_.add(row_max_linear[i], max_linear_suffix[i + 1]);
   }
 
   EncryptedBranchAndBoundResult result;
   Prefix incumbent;
+  secure::Ciphertext scaled_incumbent;
   bool has_incumbent = false;
   std::vector<std::uint8_t> current_solution(n);
   std::uint64_t node_sequence = 0;
@@ -103,8 +165,10 @@ EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
                                     "node-" + std::to_string(node)};
   };
 
-  std::function<void(std::size_t, const Prefix&)> dfs;
-  dfs = [&](std::size_t depth, const Prefix& prefix) {
+  std::function<void(std::size_t, const Prefix&,
+                     const std::vector<secure::Ciphertext>&)> dfs;
+  dfs = [&](std::size_t depth, const Prefix& prefix,
+            const std::vector<secure::Ciphertext>& lag_prefix) {
     const std::uint64_t node = ++node_sequence;
     ++result.stats.visited_nodes;
     if (depth == n) {
@@ -119,6 +183,8 @@ EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
       if (accept) {
         has_incumbent = true;
         incumbent = prefix;
+        if (use_lagrangian)
+          scaled_incumbent = ops_.scalarMul(prefix.total, grid->q);
         result.solution = current_solution;
       }
       return;
@@ -126,12 +192,27 @@ EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
 
     const auto linear_upper =
         ops_.add(prefix.linear, max_linear_suffix[depth]);
-    const auto cost_lower = ops_.add(prefix.total, min_cost_suffix[depth]);
+    std::vector<secure::Ciphertext> cost_lowers;
+    secure::Ciphertext prune_incumbent;
+    if (has_incumbent) {
+      if (use_lagrangian) {
+        cost_lowers.reserve(grid->mu.size());
+        for (std::size_t k = 0; k < grid->mu.size(); ++k)
+          cost_lowers.push_back(
+              ops_.add(lag_prefix[k], lagrangian_suffix[depth][k]));
+        prune_incumbent = scaled_incumbent;
+      } else {
+        cost_lowers.push_back(
+            ops_.add(prefix.total, min_cost_suffix[depth]));
+        prune_incumbent = incumbent.total;
+      }
+    }
     const auto operation = "prune-" + std::to_string(++prune_sequence);
     ++result.stats.prune_predicates;
     if (predicates_.pruneNode(
             context(secure::PredicateType::prune_node, depth, node, operation),
-            {linear_upper, cost_lower, has_incumbent, incumbent.total})) {
+            {linear_upper, std::move(cost_lowers), has_incumbent,
+             prune_incumbent})) {
       ++result.stats.pruned_nodes;
       return;
     }
@@ -147,14 +228,22 @@ EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
         child.c3 = ops_.add(prefix.c3, cost);
       }
       child.linear = ops_.add(
-          prefix.linear,
-          ops_.scalarMul(cost, method < 2 ? positive : negative));
+          prefix.linear, *method_linear[depth][method]);
+      std::vector<secure::Ciphertext> child_lag_prefix;
+      if (use_lagrangian) {
+        child_lag_prefix.reserve(grid->mu.size());
+        for (std::size_t k = 0; k < grid->mu.size(); ++k)
+          child_lag_prefix.push_back(
+              ops_.add(lag_prefix[k], method_scores[depth][method][k]));
+      }
       current_solution[depth] = static_cast<std::uint8_t>(method + 1);
-      dfs(depth + 1, child);
+      dfs(depth + 1, child, child_lag_prefix);
     }
   };
 
-  dfs(0, {zero, zero, zero, zero});
+  const std::vector<secure::Ciphertext> root_lag_prefix(
+      use_lagrangian ? grid->mu.size() : 0, zero);
+  dfs(0, {zero, zero, zero, zero}, root_lag_prefix);
   result.feasible = has_incumbent;
   if (has_incumbent) {
     result.total_cost = std::move(incumbent.total);
@@ -171,7 +260,7 @@ EncryptedBranchAndBoundResult ConfidentialOptimizer::optimize(
     const EncryptedOptimizationRequest& request) {
   // A fresh engine gives replay protection exactly one solve-session lifetime.
   secure::PredicateEngine predicates(ops_, authorizer_, resolver_);
-  EncryptedBranchAndBoundSolver solver(ops_, predicates);
+  EncryptedBranchAndBoundSolver solver(ops_, predicates, solver_config_);
   return solver.solve(request);
 }
 
