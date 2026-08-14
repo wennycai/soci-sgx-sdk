@@ -98,13 +98,6 @@ std::int64_t roundedRatio(std::int64_t a, std::int64_t b,
   return static_cast<std::int64_t>(rounded);
 }
 
-std::int64_t checkedPlain(Wide value, const char* message) {
-  if (value < std::numeric_limits<std::int64_t>::min() ||
-      value > std::numeric_limits<std::int64_t>::max())
-    range(message);
-  return static_cast<std::int64_t>(value);
-}
-
 }  // namespace
 
 LagrangianNumericBounds deriveLagrangianNumericBounds(
@@ -138,7 +131,9 @@ LagrangianGrid buildLagrangianGrid(const secure::NumericDomain& domain,
                                    std::int64_t threshold,
                                    const LagrangianGridConfig& config) {
   if (domain.scale <= 0 || config.denominator <= 0 ||
-      config.requested_size == 0 || config.span_factor <= 0)
+      config.requested_size == 0 ||
+      config.requested_size > kMaxLagrangianGridSize ||
+      config.span_factor <= 0)
     invalid("invalid Lagrangian grid configuration");
   if (threshold < 0 || threshold >= domain.scale)
     invalid("threshold_scaled must satisfy 0 <= threshold_scaled < scale");
@@ -205,60 +200,6 @@ LagrangianGrid buildLagrangianGrid(const secure::NumericDomain& domain,
   grid.mu.assign(values.begin(), values.end());
   (void)deriveLagrangianNumericBounds(domain, threshold, grid);
   return grid;
-}
-
-std::int64_t plaintextLagrangianScore(
-    std::int64_t cost, std::size_t method, std::int64_t threshold,
-    std::int64_t scale, std::int64_t q, std::int64_t mu) {
-  if (cost < 0 || method >= 3 || scale <= 0 || threshold < 0 ||
-      threshold >= scale || q <= 0 || mu < 0)
-    invalid("invalid plaintext Lagrangian score input");
-  const Wide linear = static_cast<Wide>(cost) *
-      (method < 2 ? scale - threshold : -threshold);
-  return checkedPlain(static_cast<Wide>(q) * cost -
-                          static_cast<Wide>(mu) * linear,
-                      "plaintext Lagrangian score exceeds int64");
-}
-
-std::vector<std::int64_t> plaintextLagrangianLowerBounds(
-    const std::vector<PlainLagrangianRow>& rows,
-    const std::vector<std::uint8_t>& prefix_methods, std::size_t depth,
-    std::int64_t threshold, std::int64_t scale,
-    const LagrangianGrid& grid) {
-  if (rows.empty() || depth > rows.size() || prefix_methods.size() != depth ||
-      grid.mu.empty())
-    invalid("invalid plaintext Lagrangian lower-bound input");
-  std::vector<Wide> bounds(grid.mu.size());
-  for (std::size_t i = 0; i < rows.size(); ++i) {
-    bool available = false;
-    for (const auto& cost : rows[i]) available |= cost.has_value();
-    if (!available) invalid("plaintext Lagrangian row has no method");
-    for (std::size_t k = 0; k < grid.mu.size(); ++k) {
-      if (i < depth) {
-        const auto method = prefix_methods[i];
-        if (method < 1 || method > 3 || !rows[i][method - 1])
-          invalid("invalid plaintext Lagrangian prefix method");
-        bounds[k] += plaintextLagrangianScore(
-            *rows[i][method - 1], method - 1, threshold, scale, grid.q,
-            grid.mu[k]);
-      } else {
-        std::optional<std::int64_t> minimum;
-        for (std::size_t method = 0; method < 3; ++method) {
-          if (!rows[i][method]) continue;
-          const auto score = plaintextLagrangianScore(
-              *rows[i][method], method, threshold, scale, grid.q, grid.mu[k]);
-          minimum = minimum ? std::min(*minimum, score) : score;
-        }
-        bounds[k] += *minimum;
-      }
-    }
-  }
-  std::vector<std::int64_t> result;
-  result.reserve(bounds.size());
-  for (const auto value : bounds)
-    result.push_back(
-        checkedPlain(value, "plaintext Lagrangian LB exceeds int64"));
-  return result;
 }
 
 }  // namespace soci::optimization

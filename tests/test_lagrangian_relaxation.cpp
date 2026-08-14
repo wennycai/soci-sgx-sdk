@@ -1,4 +1,5 @@
 #include "soci/lagrangian_relaxation.hpp"
+#include "lagrangian_plain_reference.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -12,7 +13,7 @@ namespace {
 
 using soci::optimization::LagrangianGrid;
 using soci::optimization::LagrangianGridConfig;
-using soci::optimization::PlainLagrangianRow;
+using soci::test_support::PlainLagrangianRow;
 
 void require(bool condition, const std::string& message) {
   if (!condition) throw std::runtime_error(message);
@@ -43,7 +44,7 @@ void verifySoundness(const std::vector<PlainLagrangianRow>& rows,
   std::function<void(std::size_t)> visitPrefix;
   visitPrefix = [&](std::size_t depth) {
     const auto bounds =
-        soci::optimization::plaintextLagrangianLowerBounds(
+        soci::test_support::plaintextLagrangianLowerBounds(
             rows, prefix, depth, threshold, scale, grid);
     std::vector<std::uint8_t> completion = prefix;
     completion.resize(rows.size());
@@ -100,10 +101,10 @@ int main() {
           "grid contains duplicate mu values");
   require(grid.mu.size() <= 5, "grid exceeded requested K");
 
-  require(soci::optimization::plaintextLagrangianScore(3, 0, 50, 100,
+  require(soci::test_support::plaintextLagrangianScore(3, 0, 50, 100,
                                                         400, 4) == 600,
           "C12 plaintext score is wrong");
-  require(soci::optimization::plaintextLagrangianScore(3, 2, 50, 100,
+  require(soci::test_support::plaintextLagrangianScore(3, 2, 50, 100,
                                                         400, 4) == 1800,
           "C3 plaintext score is wrong");
 
@@ -114,13 +115,13 @@ int main() {
   verifySoundness(rows, 50, 100, grid);
 
   const auto root_bounds =
-      soci::optimization::plaintextLagrangianLowerBounds(
+      soci::test_support::plaintextLagrangianLowerBounds(
           rows, {}, 0, 50, 100, grid);
   const std::int64_t old_root_suffix = 1 + 2 + 3;
   require(root_bounds.front() == grid.q * old_root_suffix,
           "mu=0 did not equal the old row-min suffix bound");
   const auto prefix_bounds =
-      soci::optimization::plaintextLagrangianLowerBounds(
+      soci::test_support::plaintextLagrangianLowerBounds(
           rows, {1}, 1, 50, 100, grid);
   require(prefix_bounds.front() == grid.q * (10 + 2 + 3),
           "mu=0 prefix bound differs from old suffix semantics");
@@ -148,6 +149,13 @@ int main() {
               truncated.mu.end(),
           "out-of-range threshold anchor was retained");
 
+  requireStatus(
+      [&] {
+        (void)soci::optimization::buildLagrangianGrid(
+            domain, 50, LagrangianGridConfig{4, 17, 1});
+      },
+      soci::optimization::Status::invalid_argument,
+      "grid larger than the hard limit was accepted");
   requireStatus(
       [&] {
         (void)soci::optimization::buildLagrangianGrid(
