@@ -14,7 +14,8 @@ each operation ID is consumed once per session. The engine returns one
 authorized boolean and does not expose the predicate plaintext or a general
 decryption API. Callers provide encrypted numeric `PruneInputs` or
 `AcceptInputs`; they cannot provide an already-computed relation bit. The
-engine constructs `linear_upper < 0 || cost_lower > incumbent_cost` for prune,
+engine constructs `linear_upper < 0 || OR_k(cost_lower[k] > incumbent_cost)`
+for prune (and skips every objective comparison before an incumbent exists),
 and constructs feasibility plus the `(cost, c12)` incumbent ordering for
 acceptance entirely through `SecureOps` before revealing exactly one final bit.
 
@@ -31,9 +32,23 @@ result. `optimize_plain` is the independent reference solver.
 
 The model follows PuLP `LpProblem` semantics: one binary variable `x[i,j]` per
 available method, an exactly-one constraint for every row, a linear minimum-cost
-objective, and the linearized ratio constraint. The implementation solves that
-model with deterministic branch-and-bound and suffix bounds; it does not depend
-on Python or PuLP at runtime.
+objective, and the linearized ratio constraint. The encrypted implementation
+keeps the fixed method1, method2, method3 DFS order and defaults to a
+multiple-choice Lagrangian suffix relaxation. It does not compress method1 and
+method2 or depend on Python/PuLP at runtime.
+
+`EncryptedBranchAndBoundConfig::cost_bound` selects the production
+`lagrangian` bound or the compatibility/benchmark `current_suffix` bound.
+`LagrangianGridConfig` contains the public deterministic normalized-grid
+parameters: `denominator`, `requested_size` (1 through 16), and `span_factor`.
+The builder uses `Q = SCALE * denominator`, represents `mu` as an integer, and
+always includes zero. A threshold of zero reduces the grid to `{0}`. Grid
+parameters affect only performance, not feasibility, optimality, DFS order, or
+tie-breaking. The default production facade uses the Lagrangian mode.
+
+`EncryptedOptimizationStats` reports visited/pruned/candidate and predicate
+counts plus preprocessing, search, and total seconds. Timing and structural
+counts are public metadata under the documented security model.
 
 Python exposes `Optimizer`, `OptimizationResult`, `optimize_plain`, and
 `optimize_csv_plain`. Java exposes `SociOptimizer` and `OptimizationResult`.

@@ -52,3 +52,36 @@ KeyGen 的随机素数搜索具有固有长尾；增加 warm-up 只用于排除�
 SIM 数据只代表模拟模式的功能和相对性能，不代表 Hardware Enclave 性能。
 CP/CSP 部分解密与经过认证的份额 provisioning 尚未完成，因此结果只列
 `ENCLAVE_KEYGEN` 和 `ENCLAVE_FULL_DECRYPT`，不会将完整解密冒充部分解密。
+
+## Phase 5 optimizer benchmark
+
+构建 OFF experimental 后运行：
+
+```bash
+cmake --preset off-experimental
+cmake --build --preset off-experimental --target soci_optimizer_benchmark
+./build/off-experimental/soci_optimizer_benchmark --rows 5
+```
+
+可用 `--k K` 单独测试一个 grid size。benchmark 使用相同密文、相同 public
+availability、相同 DFS 顺序和相同 ACCEPT 语义，对比 current suffix 与
+Lagrangian。`CountingSecureOps` 记录 SecureCompare、SecureMul 和 ScalarMul；
+OFF 的 `round_trips_estimate` 是 Compare + Mul + predicate resolver calls，
+不是 SIM/HW 网络抓包值。preprocessing/search/total 分开计时。
+
+2026-08-14，OFF debug，5 行固定 tight-ratio 数据集，`D=16`：
+
+| mode | K | visited | pruned | candidates | SCMP | SMUL | ScalarMul | estimated trips | prep s | search s | total s |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| current suffix | 1 | 85 | 27 | 30 | 293 | 208 | 196 | 586 | 6.68 | 76.04 | 82.72 |
+| Lagrangian | 1 | 85 | 27 | 30 | 293 | 208 | 218 | 586 | 6.37 | 76.26 | 82.63 |
+| Lagrangian | 3 | 76 | 24 | 27 | 371 | 295 | 368 | 742 | 12.72 | 95.29 | 108.01 |
+| Lagrangian | 5 | 76 | 24 | 27 | 479 | 403 | 536 | 958 | 19.50 | 123.59 | 143.09 |
+| Lagrangian | 9 | 76 | 24 | 27 | 695 | 619 | 872 | 1390 | 32.25 | 180.93 | 213.18 |
+
+K=1 与旧 bound 的搜索树完全一致。K>=3 在该数据集上将 visited nodes 从
+85 降至 76（-10.6%），candidate count 从 30 降至 27（-10%），证明 stronger
+bound 确实产生额外 sound pruning；但额外固定协议调用使端到端时间增加。
+K=5/9 没有进一步减少节点，因此更大的 public grid 并不自动意味着更好的
+整体性能。该结果应解释为 pruning effectiveness 与协议成本的权衡，而不是
+宣称所有数据集都加速。

@@ -46,5 +46,33 @@ protocol boundary. This is a capability and
 protocol-layer boundary; deployment authorization still depends on the future
 authenticated transport and attestation work listed above.
 
+## Encrypted optimizer leakage boundary
+
+The Phase 5 optimizer does not decrypt costs, linear contributions, scores,
+row minima, suffix bounds, or node lower bounds. For every public grid point it
+computes `LB[k] > Q * incumbent_cost` as an encrypted bit, folds those bits in
+the fixed public grid order, combines the result with `linear_upper < 0`, and
+passes exactly one final `PRUNE_NODE` bit through `PredicateEngine`. It does not
+materialize or reveal a strongest-bound ciphertext or winning multiplier.
+Before an incumbent exists, objective comparisons are skipped and the only
+node predicate is encrypted ratio-feasibility pruning.
+
+Availability, row order, method order, grid parameters, depth, node counts,
+predicate counts, protocol counts, and timings remain public. Costs and all
+relationships derived from them remain encrypted. Branch order is always
+method1, method2, method3; there is no secret sorting, dominance elimination,
+strong branching, or secret-dependent row/branch selection. Leaves still
+reveal only `ACCEPT_CANDIDATE`, using feasibility and the `(total, C12)` strict
+incumbent ordering. Exact ties do not update the incumbent, preserving the
+fixed-DFS lexicographic-first result.
+
+The numeric-domain check distinguishes homomorphic transient values from
+operands entering SCMP/SMUL. Score differences used by SecureMin must remain
+below the signed 127-bit SMUL limit. Every node bound and scaled incumbent must
+fit `compare_operand_bits`, which itself cannot exceed 127. Public grid
+arithmetic is checked before any secure protocol call; unsupported public
+threshold-derived anchors are discarded or truncated to the maximum supported
+mu rather than exposing or inspecting encrypted data.
+
 HW mode is fail-closed: configuration requires Intel SGX SDK and the hardware
 scripts require SGX CPU/device checks. It never falls back to SIM or OFF.
