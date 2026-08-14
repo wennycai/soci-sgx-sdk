@@ -13,3 +13,10 @@ jobs:
       - run: cmake --preset off-experimental-asan
       - run: cmake --build --preset off-experimental-asan
       - run: ctest --preset off-experimental-asan
+  sim:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f docker/compose.sim.yaml up --build --abort-on-container-exit --exit-code-from test
+      - if: always()
+        run: docker compose -f docker/compose.sim.yaml down --volumes

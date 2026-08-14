@@ -201,6 +201,8 @@ EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
     secure::Ciphertext prune_incumbent;
     if (has_incumbent) {
       if (use_lagrangian) {
+        ++result.stats.multi_bound_prune_nodes;
+        result.stats.objective_bound_comparisons += grid->mu.size();
         cost_lowers.reserve(grid->mu.size());
         for (std::size_t k = 0; k < grid->mu.size(); ++k)
           cost_lowers.push_back(

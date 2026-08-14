@@ -38,9 +38,12 @@ void require(bool condition, const char* message) {
 class IntegrationAuthorizer final
     : public soci::secure::PredicateAuthorizer {
  public:
+  std::uint64_t calls{};
   bool authorize(const soci::secure::PredicateContext& context) override {
+    ++calls;
     return (context.session_id == "threshold-sim" ||
-            context.session_id == "threshold-facade") &&
+            context.session_id == "threshold-facade" ||
+            context.session_id == "threshold-lagrangian") &&
            !context.operation_id.empty() &&
            context.node_id.rfind("node-", 0) == 0;
   }
@@ -178,6 +181,17 @@ int main(int argc, char** argv) {
             "boundary predicate failed");
 
     const auto facade_cost = number(7);
+    const std::array<std::array<std::int64_t, 3>, 5> lagrangian_plain{{
+        {{18, 18, 12}}, {{1, 7, 1}}, {{17, 4, 9}}, {{13, 4, 17}},
+        {{3, 18, 9}},
+    }};
+    std::vector<soci::optimization::EncryptedCostRow> lagrangian_costs;
+    for (const auto& plain_row : lagrangian_plain) {
+      soci::optimization::EncryptedCostRow encrypted_row;
+      for (std::size_t method = 0; method < 3; ++method)
+        encrypted_row.methods[method] = number(plain_row[method]);
+      lagrangian_costs.push_back(std::move(encrypted_row));
+    }
 
     rejected = false;
     try {
@@ -249,6 +263,7 @@ int main(int argc, char** argv) {
     row.methods[2] = facade_cost;
     request.costs.push_back(std::move(row));
     soci::optimization::EncryptedBranchAndBoundResult optimized;
+    soci::optimization::EncryptedBranchAndBoundResult lagrangian_optimized;
     {
       soci::optimization::ThresholdConfidentialConfig config{
           argv[2], directory.string(), "127.0.0.1", facade_port,
@@ -256,13 +271,42 @@ int main(int argc, char** argv) {
               ? soci::optimization::ThresholdExecutionMode::sim
               : soci::optimization::ThresholdExecutionMode::hw,
           domain};
+      config.solver_config.cost_bound =
+          soci::optimization::EncryptedCostBound::lagrangian;
+      config.solver_config.lagrangian_grid.denominator = 1;
+      config.solver_config.lagrangian_grid.requested_size = 3;
       soci::optimization::ThresholdConfidentialRuntime confidential_runtime(
           std::move(config), authorizer);
+      auto authorizer_before = authorizer.calls;
       optimized = confidential_runtime.optimize(request);
+      require(authorizer.calls - authorizer_before ==
+                  optimized.stats.prune_predicates +
+                      optimized.stats.accept_predicates,
+              "threshold facade revealed outside PRUNE/ACCEPT");
+
+      soci::optimization::EncryptedOptimizationRequest lagrangian_request;
+      lagrangian_request.session_id = "threshold-lagrangian";
+      lagrangian_request.threshold_scaled = 500'000;
+      lagrangian_request.costs = std::move(lagrangian_costs);
+      authorizer_before = authorizer.calls;
+      lagrangian_optimized =
+          confidential_runtime.optimize(lagrangian_request);
+      require(authorizer.calls - authorizer_before ==
+                  lagrangian_optimized.stats.prune_predicates +
+                      lagrangian_optimized.stats.accept_predicates,
+              "multi-LB solve revealed outside PRUNE/ACCEPT");
     }
     require(optimized.feasible, "Threshold facade found no solution");
     require(optimized.solution == std::vector<std::uint8_t>{3},
             "Threshold facade selected the wrong method");
+    require(lagrangian_optimized.feasible,
+            "multi-LB threshold facade found no solution");
+    require(lagrangian_optimized.solution ==
+                std::vector<std::uint8_t>({3, 1, 2, 2, 1}),
+            "multi-LB threshold facade selected the wrong methods");
+    require(lagrangian_optimized.stats.multi_bound_prune_nodes > 0 &&
+                lagrangian_optimized.stats.objective_bound_comparisons >= 3,
+            "SIM E2E did not exercise incumbent multi-LB pruning");
 
     soci::protocol::ThresholdProtocolClient verifier(
         argv[2], directory.string(), "127.0.0.1", facade_port, mode);
@@ -275,6 +319,10 @@ int main(int argc, char** argv) {
     require(verify(optimized.total_cost) == 7 && verify(optimized.c12) == 0 &&
                 verify(optimized.c3) == 7,
             "Threshold facade returned incorrect encrypted aggregates");
+    require(verify(lagrangian_optimized.total_cost) == 24 &&
+                verify(lagrangian_optimized.c12) == 12 &&
+                verify(lagrangian_optimized.c3) == 12,
+            "multi-LB facade returned incorrect encrypted aggregates");
     verifier.requestServerShutdown();
     waitpid(server, &status, 0);
     server = -1;
