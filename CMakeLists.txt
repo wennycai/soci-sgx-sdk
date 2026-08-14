@@ -120,6 +120,12 @@ if(SOCI_SGX_MODE STREQUAL "OFF")
     add_test(NAME soci_optimizer_source_security
       COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
         -P ${CMAKE_SOURCE_DIR}/tests/check_optimizer_security.cmake)
+    add_executable(soci_optimizer_benchmark
+      benchmark/encrypted_optimizer.cpp)
+    target_include_directories(soci_optimizer_benchmark PRIVATE benchmark)
+    target_link_libraries(soci_optimizer_benchmark PRIVATE soci_sdk)
+    add_test(NAME soci_optimizer_benchmark_smoke
+      COMMAND soci_optimizer_benchmark --rows 3 --k 1)
   endif()
 else()
   add_test(NAME soci_sgx_cp_lifecycle COMMAND soci_sgx_lifecycle_test

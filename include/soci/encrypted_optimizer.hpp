@@ -31,6 +31,9 @@ struct EncryptedOptimizationStats {
   std::uint64_t candidate_count{};
   std::uint64_t prune_predicates{};
   std::uint64_t accept_predicates{};
+  double preprocessing_seconds{};
+  double search_seconds{};
+  double total_seconds{};
 };
 
 enum class EncryptedCostBound : std::uint8_t {

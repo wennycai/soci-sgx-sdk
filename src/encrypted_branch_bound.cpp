@@ -1,6 +1,7 @@
 #include "soci/encrypted_optimizer.hpp"
 
 #include <cctype>
+#include <chrono>
 #include <functional>
 #include <limits>
 #include <utility>
@@ -33,6 +34,7 @@ struct Prefix {
 
 EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
     const EncryptedOptimizationRequest& request) {
+  const auto solve_start = std::chrono::steady_clock::now();
   const auto& domain = ops_.domain();
   if (request.costs.empty()) invalid("encrypted costs must not be empty");
   if (domain.scale <= 0 || domain.max_rows == 0)
@@ -150,6 +152,9 @@ EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
   }
 
   EncryptedBranchAndBoundResult result;
+  const auto search_start = std::chrono::steady_clock::now();
+  result.stats.preprocessing_seconds =
+      std::chrono::duration<double>(search_start - solve_start).count();
   Prefix incumbent;
   secure::Ciphertext scaled_incumbent;
   bool has_incumbent = false;
@@ -244,6 +249,11 @@ EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
   const std::vector<secure::Ciphertext> root_lag_prefix(
       use_lagrangian ? grid->mu.size() : 0, zero);
   dfs(0, {zero, zero, zero, zero}, root_lag_prefix);
+  const auto solve_end = std::chrono::steady_clock::now();
+  result.stats.search_seconds =
+      std::chrono::duration<double>(solve_end - search_start).count();
+  result.stats.total_seconds =
+      std::chrono::duration<double>(solve_end - solve_start).count();
   result.feasible = has_incumbent;
   if (has_incumbent) {
     result.total_cost = std::move(incumbent.total);
