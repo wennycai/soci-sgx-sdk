@@ -1,4 +1,5 @@
 #include "protocol/threshold_protocol.hpp"
+#include "soci/encrypted_optimizer.hpp"
 
 #include <arpa/inet.h>
 #include <chrono>
@@ -38,8 +39,10 @@ class IntegrationAuthorizer final
     : public soci::secure::PredicateAuthorizer {
  public:
   bool authorize(const soci::secure::PredicateContext& context) override {
-    return context.session_id == "threshold-sim" &&
-           !context.operation_id.empty() && context.node_id == "node-7";
+    return (context.session_id == "threshold-sim" ||
+            context.session_id == "threshold-facade") &&
+           !context.operation_id.empty() &&
+           context.node_id.rfind("node-", 0) == 0;
   }
 };
 
@@ -173,6 +176,23 @@ int main(int argc, char** argv) {
                 predicateContext(soci::secure::PredicateType::prune_node),
                 {negative_boundary, almost_power_126, false, {}}),
             "boundary predicate failed");
+
+    stage = "confidential optimizer facade";
+    soci::optimization::EncryptedOptimizationRequest request;
+    request.session_id = "threshold-facade";
+    request.threshold_scaled = 0;
+    soci::optimization::EncryptedCostRow row;
+    row.methods[2] = number(7);
+    request.costs.push_back(std::move(row));
+    soci::optimization::ConfidentialOptimizer optimizer(
+        {ops, authorizer, predicate_resolver});
+    const auto optimized = optimizer.optimize(request);
+    require(optimized.feasible, "Threshold facade found no solution");
+    require(optimized.solution == std::vector<std::uint8_t>{3},
+            "Threshold facade selected the wrong method");
+    require(reveal(optimized.total_cost) == 7 &&
+                reveal(optimized.c12) == 0 && reveal(optimized.c3) == 7,
+            "Threshold facade returned incorrect encrypted aggregates");
 
     rejected = false;
     try {

@@ -167,4 +167,12 @@ EncryptedBranchAndBoundResult EncryptedBranchAndBoundSolver::solve(
   return result;
 }
 
+EncryptedBranchAndBoundResult ConfidentialOptimizer::optimize(
+    const EncryptedOptimizationRequest& request) {
+  // A fresh engine gives replay protection exactly one solve-session lifetime.
+  secure::PredicateEngine predicates(ops_, authorizer_, resolver_);
+  EncryptedBranchAndBoundSolver solver(ops_, predicates);
+  return solver.solve(request);
+}
+
 }  // namespace soci::optimization

@@ -144,6 +144,10 @@ endif()
 
 install(TARGETS soci_sdk soci_cp_service soci_csp_service
   LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+if(NOT SOCI_SGX_MODE STREQUAL "OFF")
+  install(TARGETS soci_threshold_optimizer soci_threshold_protocol
+    ARCHIVE DESTINATION lib)
+endif()
 install(DIRECTORY include/ DESTINATION include)
 
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/build-manifest.json" CONTENT

@@ -131,6 +131,14 @@ if(SOCI_SGX_MODE STREQUAL "HW")
 endif()
 add_dependencies(soci_threshold_protocol soci_provisioning_enclave soci_cp_enclave soci_csp_enclave)
 
+add_library(soci_threshold_optimizer STATIC
+  src/protocol/threshold_optimizer.cpp)
+target_include_directories(soci_threshold_optimizer PRIVATE
+  "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/include")
+target_link_libraries(soci_threshold_optimizer PUBLIC
+  soci_threshold_protocol soci_sdk)
+add_dependencies(soci_threshold_optimizer soci_threshold_protocol)
+
 add_executable(soci_threshold_runtime services/threshold_runtime.cpp)
 target_include_directories(soci_threshold_runtime PRIVATE
   "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/include")
@@ -148,6 +156,6 @@ target_include_directories(soci_threshold_secure_ops_test PRIVATE
 target_link_directories(soci_threshold_secure_ops_test PRIVATE
   "${SGX_LIBRARY_DIR}")
 target_link_libraries(soci_threshold_secure_ops_test PRIVATE
-  soci_threshold_protocol soci_sdk)
+  soci_threshold_optimizer)
 add_dependencies(soci_threshold_secure_ops_test soci_threshold_protocol
   soci_threshold_runtime)

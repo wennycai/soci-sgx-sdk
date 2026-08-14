@@ -59,4 +59,28 @@ class EncryptedBranchAndBoundSolver {
   secure::PredicateEngine& predicates_;
 };
 
+struct ConfidentialOptimizerConfig {
+  secure::SecureOps& ops;
+  secure::PredicateAuthorizer& authorizer;
+  secure::PredicateBitResolver& resolver;
+};
+
+// Policy-free facade: callers must supply both authorization and the narrowly
+// scoped final-predicate resolver. The SDK never installs an allow-all policy.
+class ConfidentialOptimizer {
+ public:
+  explicit ConfidentialOptimizer(ConfidentialOptimizerConfig config)
+      : ops_(config.ops),
+        authorizer_(config.authorizer),
+        resolver_(config.resolver) {}
+
+  EncryptedBranchAndBoundResult optimize(
+      const EncryptedOptimizationRequest& request);
+
+ private:
+  secure::SecureOps& ops_;
+  secure::PredicateAuthorizer& authorizer_;
+  secure::PredicateBitResolver& resolver_;
+};
+
 }  // namespace soci::optimization

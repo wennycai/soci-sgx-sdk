@@ -408,10 +408,24 @@ CostMatrix costs = {
 auto r = opt.optimize(costs, "0.6");  // r.total_cost / r.solution / r.ratio
 ```
 
-`optimize_plain` / `optimize_csv_plain` 是不依赖密钥的独立参考求解器；
-`Optimizer::optimize_encrypted` 直接接受密文成本矩阵。模型遵循 PuLP
-`LpProblem` 语义（每行恰好选一、线性最小成本目标、线性化 ratio 约束），用确定性
-分支定界求解，运行时不依赖 Python 或 PuLP。Python 暴露 `Optimizer`、
+`optimize_plain` / `optimize_csv_plain` 是不依赖密钥的独立参考求解器。
+`Optimizer::optimize_encrypted` 仅作为旧 OFF facade 的兼容接口保留；新的密态生产
+路径使用 `ConfidentialOptimizer`，并强制由调用方注入 `SecureOps`、
+`PredicateAuthorizer` 和 `PredicateBitResolver`：
+
+```cpp
+soci::optimization::ConfidentialOptimizer optimizer(
+    {ops, application_authorizer, predicate_resolver});
+auto result = optimizer.optimize(request);
+```
+
+SDK 不提供默认 allow-all authorizer。`PredicateEngine` 是唯一允许把最终语义谓词
+解析为明文控制流的边界。SIM/HW 部署还可通过 `ThresholdConfidentialRuntime`
+（`<soci/threshold_optimizer.hpp>`）组装内部 `ThresholdProtocolClient`、
+`ThresholdSecureOps` 和 `ThresholdPredicateBitResolver`，而不公开协议客户端。
+
+模型遵循 PuLP `LpProblem` 语义（每行恰好选一、线性最小成本目标、线性化 ratio
+约束），使用确定性密态分支定界，运行时不依赖 Python 或 PuLP。Python 暴露 `Optimizer`、
 `OptimizationResult`、`optimize_plain`、`optimize_csv_plain`，Java 暴露
 `SociOptimizer`、`OptimizationResult`。
 

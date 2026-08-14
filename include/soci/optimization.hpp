@@ -55,6 +55,7 @@ class Optimizer {
                               const std::string& ratio_threshold = "0.6") const;
   OptimizationResult optimize_csv(const std::string& path,
                                   const std::string& ratio_threshold = "0.6") const;
+  [[deprecated("use ConfidentialOptimizer with an injected authorizer and resolver")]]
   EncryptedOptimizationResult optimize_encrypted(
       const std::vector<std::array<std::optional<std::vector<uint8_t>>,3>>& costs,
       const std::string& ratio_threshold = "0.6") const;

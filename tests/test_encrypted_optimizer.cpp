@@ -108,9 +108,9 @@ class Harness {
       request.costs.push_back(std::move(encrypted));
     }
     const auto before = resolver_.calls;
-    soci::secure::PredicateEngine predicates(ops_, authorizer_, resolver_);
-    soci::optimization::EncryptedBranchAndBoundSolver solver(ops_, predicates);
-    auto result = solver.solve(request);
+    soci::optimization::ConfidentialOptimizer optimizer(
+        {ops_, authorizer_, resolver_});
+    auto result = optimizer.optimize(request);
     require(resolver_.calls - before == result.stats.prune_predicates +
                                           result.stats.accept_predicates,
             "solver revealed something other than final PRUNE/ACCEPT bits");
