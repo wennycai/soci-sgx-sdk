@@ -117,6 +117,9 @@ if(SOCI_SGX_MODE STREQUAL "OFF")
     target_link_libraries(soci_lagrangian_relaxation_tests PRIVATE soci_sdk)
     add_test(NAME soci_lagrangian_relaxation_tests
       COMMAND soci_lagrangian_relaxation_tests)
+    add_test(NAME soci_optimizer_source_security
+      COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -P ${CMAKE_SOURCE_DIR}/tests/check_optimizer_security.cmake)
   endif()
 else()
   add_test(NAME soci_sgx_cp_lifecycle COMMAND soci_sgx_lifecycle_test

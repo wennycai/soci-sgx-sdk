@@ -96,7 +96,8 @@ class Harness {
   ~Harness() { std::filesystem::remove_all(directory_); }
 
   soci::optimization::EncryptedBranchAndBoundResult solve(
-      const std::vector<PlainRow>& rows, std::int64_t threshold) {
+      const std::vector<PlainRow>& rows, std::int64_t threshold,
+      soci::optimization::EncryptedBranchAndBoundConfig config = {}) {
     soci::optimization::EncryptedOptimizationRequest request;
     request.threshold_scaled = threshold;
     request.session_id = "solve-" + std::to_string(++session_);
@@ -109,7 +110,7 @@ class Harness {
     }
     const auto before = resolver_.calls;
     soci::optimization::ConfidentialOptimizer optimizer(
-        {ops_, authorizer_, resolver_});
+        {ops_, authorizer_, resolver_, std::move(config)});
     auto result = optimizer.optimize(request);
     require(resolver_.calls - before == result.stats.prune_predicates +
                                           result.stats.accept_predicates,
@@ -122,9 +123,10 @@ class Harness {
   }
 
   void compare(const std::vector<PlainRow>& rows, std::int64_t threshold,
-               const std::string& label) {
+               const std::string& label,
+               soci::optimization::EncryptedBranchAndBoundConfig config = {}) {
     const auto expected = reference(rows, threshold, 100);
-    const auto actual = solve(rows, threshold);
+    const auto actual = solve(rows, threshold, std::move(config));
     require(actual.feasible == expected.feasible, label + ": feasibility");
     require(actual.solution == expected.solution, label + ": solution");
     if (!expected.feasible) {
@@ -134,6 +136,29 @@ class Harness {
     require(decrypt(actual.total_cost) == expected.total, label + ": total");
     require(decrypt(actual.c12) == expected.c12, label + ": c12");
     require(decrypt(actual.c3) == expected.c3, label + ": c3");
+  }
+
+  void compareBounds(const std::vector<PlainRow>& rows,
+                     std::int64_t threshold, const std::string& label) {
+    soci::optimization::EncryptedBranchAndBoundConfig current;
+    current.cost_bound =
+        soci::optimization::EncryptedCostBound::current_suffix;
+    soci::optimization::EncryptedBranchAndBoundConfig zero_mu;
+    zero_mu.lagrangian_grid.requested_size = 1;
+    const auto current_result = solve(rows, threshold, current);
+    const auto zero_mu_result = solve(rows, threshold, zero_mu);
+    require(current_result.feasible == zero_mu_result.feasible,
+            label + ": mu=0 feasibility differs from current suffix");
+    require(current_result.solution == zero_mu_result.solution,
+            label + ": mu=0 solution differs from current suffix");
+    require(current_result.stats.visited_nodes ==
+                zero_mu_result.stats.visited_nodes &&
+            current_result.stats.pruned_nodes ==
+                zero_mu_result.stats.pruned_nodes &&
+            current_result.stats.candidate_count ==
+                zero_mu_result.stats.candidate_count,
+            label + ": mu=0 search tree differs from current suffix");
+    compare(rows, threshold, label + "-lagrangian");
   }
 
   std::int64_t decrypt(const soci::secure::Ciphertext& value) {
@@ -225,6 +250,12 @@ int main() {
               harness.decrypt(equal_lower_bound.c12) == 2,
           "cost_lower equal to incumbent was incorrectly pruned");
 
+  harness.compareBounds(
+      {PlainRow{10, 1, std::nullopt},
+       PlainRow{2, std::nullopt, 7},
+       PlainRow{std::nullopt, 3, 4}},
+      50, "bound-mode-differential");
+
   std::mt19937 generator(7331);
   for (std::size_t trial = 0; trial < 36; ++trial) {
     const std::size_t n = 1 + generator() % 5;
@@ -240,6 +271,19 @@ int main() {
     const std::array<std::int64_t, 5> thresholds{0, 25, 50, 60, 75};
     harness.compare(rows, thresholds[generator() % thresholds.size()],
                     "random-" + std::to_string(trial));
+  }
+
+  for (std::size_t trial = 0; trial < 4; ++trial) {
+    const std::size_t n = 2 + generator() % 3;
+    std::vector<PlainRow> rows(n);
+    for (auto& row : rows) {
+      for (std::size_t method = 0; method < 3; ++method)
+        if (generator() % 2 == 0)
+          row[method] = generator() % 10;
+      if (!row[0] && !row[1] && !row[2]) row[generator() % 3] = 1;
+    }
+    harness.compareBounds(rows, (generator() % 4) * 20,
+                          "random-bound-mode-" + std::to_string(trial));
   }
 
   std::vector<PlainRow> max_rows(8,
