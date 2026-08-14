@@ -1,5 +1,5 @@
 #include "protocol/threshold_protocol.hpp"
-#include "soci/encrypted_optimizer.hpp"
+#include "soci/threshold_optimizer.hpp"
 
 #include <arpa/inet.h>
 #include <chrono>
@@ -177,22 +177,7 @@ int main(int argc, char** argv) {
                 {negative_boundary, almost_power_126, false, {}}),
             "boundary predicate failed");
 
-    stage = "confidential optimizer facade";
-    soci::optimization::EncryptedOptimizationRequest request;
-    request.session_id = "threshold-facade";
-    request.threshold_scaled = 0;
-    soci::optimization::EncryptedCostRow row;
-    row.methods[2] = number(7);
-    request.costs.push_back(std::move(row));
-    soci::optimization::ConfidentialOptimizer optimizer(
-        {ops, authorizer, predicate_resolver});
-    const auto optimized = optimizer.optimize(request);
-    require(optimized.feasible, "Threshold facade found no solution");
-    require(optimized.solution == std::vector<std::uint8_t>{3},
-            "Threshold facade selected the wrong method");
-    require(reveal(optimized.total_cost) == 7 &&
-                reveal(optimized.c12) == 0 && reveal(optimized.c3) == 7,
-            "Threshold facade returned incorrect encrypted aggregates");
+    const auto facade_cost = number(7);
 
     rejected = false;
     try {
@@ -244,6 +229,57 @@ int main(int argc, char** argv) {
     server = -1;
     require(WIFEXITED(status) && WEXITSTATUS(status) == 0,
             "CSP did not shut down cleanly");
+
+    stage = "ThresholdConfidentialRuntime end-to-end";
+    const int facade_port = unusedPort();
+    server = fork();
+    if (server == 0) {
+      const auto port_string = std::to_string(facade_port);
+      setenv("SOCI_SGX_MODE", argv[4], 1);
+      execl(argv[5], argv[5], "csp", argv[3], directory.c_str(),
+            port_string.c_str(), static_cast<char*>(nullptr));
+      _exit(127);
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+    soci::optimization::EncryptedOptimizationRequest request;
+    request.session_id = "threshold-facade";
+    request.threshold_scaled = 0;
+    soci::optimization::EncryptedCostRow row;
+    row.methods[2] = facade_cost;
+    request.costs.push_back(std::move(row));
+    soci::optimization::EncryptedBranchAndBoundResult optimized;
+    {
+      soci::optimization::ThresholdConfidentialConfig config{
+          argv[2], directory.string(), "127.0.0.1", facade_port,
+          mode == soci::protocol::ThresholdMode::sim
+              ? soci::optimization::ThresholdExecutionMode::sim
+              : soci::optimization::ThresholdExecutionMode::hw,
+          domain};
+      soci::optimization::ThresholdConfidentialRuntime confidential_runtime(
+          std::move(config), authorizer);
+      optimized = confidential_runtime.optimize(request);
+    }
+    require(optimized.feasible, "Threshold facade found no solution");
+    require(optimized.solution == std::vector<std::uint8_t>{3},
+            "Threshold facade selected the wrong method");
+
+    soci::protocol::ThresholdProtocolClient verifier(
+        argv[2], directory.string(), "127.0.0.1", facade_port, mode);
+    const auto verify = [&](const soci::secure::Ciphertext& value) {
+      mpz_class raw;
+      mpz_import(raw.get_mpz_t(), value.bytes.size() - 12, 1, 1, 1, 0,
+                 value.bytes.data() + 12);
+      return verifier.decryptForTesting(raw);
+    };
+    require(verify(optimized.total_cost) == 7 && verify(optimized.c12) == 0 &&
+                verify(optimized.c3) == 7,
+            "Threshold facade returned incorrect encrypted aggregates");
+    verifier.requestServerShutdown();
+    waitpid(server, &status, 0);
+    server = -1;
+    require(WIFEXITED(status) && WEXITSTATUS(status) == 0,
+            "facade CSP did not shut down cleanly");
     std::filesystem::remove_all(directory);
     std::cout << "ThresholdSecureOps " << argv[4]
               << " integration tests passed\n";
