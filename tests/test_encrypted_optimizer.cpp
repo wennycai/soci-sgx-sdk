@@ -194,6 +194,9 @@ int main() {
   harness.compare({PlainRow{5, std::nullopt, std::nullopt},
                    PlainRow{std::nullopt, std::nullopt, 5}}, 50,
                   "linear-equals-zero");
+  harness.compare({PlainRow{10, 1, std::nullopt},
+                   PlainRow{std::nullopt, std::nullopt, 10}}, 50,
+                  "more-expensive-c12-is-only-feasible");
   harness.compare({PlainRow{std::nullopt, std::nullopt, 3}}, 1,
                   "ratio-infeasible");
   harness.compare({PlainRow{1, 2, std::nullopt}}, 0, "c3-zero");

@@ -49,8 +49,14 @@ bool PredicateEngine::pruneNode(const PredicateContext& context,
   if (inputs.has_incumbent) {
     if (inputs.incumbent_cost.bytes.empty())
       throw PredicateError("missing incumbent cost");
-    const auto cost_prune =
-        ops_.greaterThan(inputs.cost_lower, inputs.incumbent_cost);
+    if (inputs.cost_lowers.empty())
+      throw PredicateError("missing cost lower bounds");
+    auto cost_prune =
+        ops_.greaterThan(inputs.cost_lowers.front(), inputs.incumbent_cost);
+    for (std::size_t i = 1; i < inputs.cost_lowers.size(); ++i)
+      cost_prune = ops_.bitOr(
+          cost_prune,
+          ops_.greaterThan(inputs.cost_lowers[i], inputs.incumbent_cost));
     final_bit = ops_.bitOr(final_bit, cost_prune);
   }
   return evaluateFinalBit(context, PredicateType::prune_node, final_bit);

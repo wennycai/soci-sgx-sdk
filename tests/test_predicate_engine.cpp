@@ -101,6 +101,42 @@ int main() {
   require(!prune("no-incumbent", 1, 99, false, 1),
           "cost pruned without incumbent");
 
+  const auto multi_before = resolver.calls;
+  require(engine.pruneNode(
+              context("multi-cost-prune",
+                      soci::secure::PredicateType::prune_node),
+              {number(0),
+               std::vector<soci::secure::Ciphertext>{number(8), number(11),
+                                                     number(10)},
+               true, number(10)}),
+          "multiple lower bounds were not ORed");
+  require(resolver.calls == multi_before + 1,
+          "multiple lower bounds revealed more than one PRUNE bit");
+  require(!engine.pruneNode(
+              context("multi-cost-equal",
+                      soci::secure::PredicateType::prune_node),
+              {number(0),
+               std::vector<soci::secure::Ciphertext>{number(9), number(10)},
+               true, number(10)}),
+          "equal multiple lower bound pruned");
+  require(!engine.pruneNode(
+              context("empty-cost-no-incumbent",
+                      soci::secure::PredicateType::prune_node),
+              {number(0),
+               std::vector<soci::secure::Ciphertext>{
+                   soci::secure::Ciphertext{{1, 2, 3}}},
+               false, {}}),
+          "objective bounds were evaluated without an incumbent");
+  requireRejected(
+      [&] {
+        engine.pruneNode(
+            context("empty-cost-with-incumbent",
+                    soci::secure::PredicateType::prune_node),
+            {number(0), std::vector<soci::secure::Ciphertext>{}, true,
+             number(10)});
+      },
+      "missing objective bounds were accepted with an incumbent");
+
   require(accept("first-feasible", 0, 1, 10, 6, false, 0, 0),
           "first feasible candidate rejected");
   require(!accept("zero-c3", 0, 0, 10, 6, false, 0, 0),

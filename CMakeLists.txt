@@ -43,7 +43,7 @@ endif()
 add_library(soci_sdk SHARED
   src/crypto.cpp src/serialization.cpp src/runtime.cpp src/c_api.cpp
   src/secure_ops.cpp src/predicate_engine.cpp src/optimization.cpp
-  src/encrypted_branch_bound.cpp)
+  src/encrypted_branch_bound.cpp src/lagrangian_relaxation.cpp)
 target_include_directories(soci_sdk PUBLIC include PRIVATE src ${GMP_INCLUDE_DIR})
 target_link_libraries(soci_sdk PRIVATE ${GMPXX_LIBRARY} ${GMP_LIBRARY} OpenSSL::Crypto)
 target_compile_definitions(soci_sdk PRIVATE SOCI_SGX_MODE="${SOCI_SGX_MODE}"
@@ -112,6 +112,11 @@ if(SOCI_SGX_MODE STREQUAL "OFF")
     target_link_libraries(soci_encrypted_optimizer_tests PRIVATE soci_sdk)
     add_test(NAME soci_encrypted_optimizer_tests
       COMMAND soci_encrypted_optimizer_tests)
+    add_executable(soci_lagrangian_relaxation_tests
+      tests/test_lagrangian_relaxation.cpp)
+    target_link_libraries(soci_lagrangian_relaxation_tests PRIVATE soci_sdk)
+    add_test(NAME soci_lagrangian_relaxation_tests
+      COMMAND soci_lagrangian_relaxation_tests)
   endif()
 else()
   add_test(NAME soci_sgx_cp_lifecycle COMMAND soci_sgx_lifecycle_test

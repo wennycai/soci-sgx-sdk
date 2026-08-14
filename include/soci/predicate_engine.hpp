@@ -6,6 +6,8 @@
 #include <mutex>
 #include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 namespace soci::secure {
 
@@ -24,9 +26,23 @@ struct PredicateContext {
 
 struct PruneInputs {
   Ciphertext linear_upper;
-  Ciphertext cost_lower;
+  std::vector<Ciphertext> cost_lowers;
   bool has_incumbent{};
   Ciphertext incumbent_cost;
+
+  PruneInputs(Ciphertext linear, Ciphertext cost_lower, bool has_best,
+              Ciphertext best_cost)
+      : linear_upper(std::move(linear)),
+        cost_lowers{std::move(cost_lower)},
+        has_incumbent(has_best),
+        incumbent_cost(std::move(best_cost)) {}
+
+  PruneInputs(Ciphertext linear, std::vector<Ciphertext> lower_bounds,
+              bool has_best, Ciphertext best_cost)
+      : linear_upper(std::move(linear)),
+        cost_lowers(std::move(lower_bounds)),
+        has_incumbent(has_best),
+        incumbent_cost(std::move(best_cost)) {}
 };
 
 struct AcceptInputs {
