@@ -266,6 +266,10 @@ OptimizationResult Optimizer::optimize_csv(const std::string& path, const std::s
 EncryptedOptimizationResult Optimizer::optimize_encrypted(
     const std::vector<std::array<std::optional<std::vector<uint8_t>>,3>>& costs,
     const std::string& threshold_text) const {
+  if (runtime_.mode() != SOCI_MODE_OFF)
+    throw Error(
+        "legacy Optimizer::optimize_encrypted is restricted to OFF mode; "
+        "use ThresholdConfidentialRuntime for SIM/HW");
   if(costs.empty())bad(Status::invalid_argument,"encrypted cost matrix must not be empty");
   int64_t threshold=decimal(threshold_text,true);
   for(const auto&row:costs)if(!row[0]&&!row[1]&&!row[2])bad(Status::no_feasible_solution,"each material needs an available method");

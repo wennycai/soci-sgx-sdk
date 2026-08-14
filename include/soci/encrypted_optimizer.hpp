@@ -67,6 +67,8 @@ struct ConfidentialOptimizerConfig {
 
 // Policy-free facade: callers must supply both authorization and the narrowly
 // scoped final-predicate resolver. The SDK never installs an allow-all policy.
+// Each solve should use a unique session_id. Policy for cross-solve session-id
+// reuse belongs to the caller-supplied PredicateAuthorizer.
 class ConfidentialOptimizer {
  public:
   explicit ConfidentialOptimizer(ConfidentialOptimizerConfig config)
