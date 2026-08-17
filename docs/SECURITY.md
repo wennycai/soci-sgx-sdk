@@ -13,8 +13,9 @@ SOCI-plus semi-honest protocol structure: SMUL masks both operands and packs
 them into one threshold-decrypted ciphertext; SCMP
 decrypts only a randomized, randomly-oriented difference; SABS composes SCMP
 and SMUL; and SDIV composes per-bit SCMP and SMUL rounds. CSP no longer receives
-an unmasked SCMP or SDIV operand. These protocols still lack replay protection
-and a formal malicious-security proof, and callers must enforce their declared
+an unmasked SCMP or SDIV operand. Outside the fused predicate path, these
+protocols still lack replay protection and a formal malicious-security proof,
+and callers must enforce their declared
 plaintext and bit-length bounds.
 
 SIM now implements 3072-bit Paillier key generation, full decryption, SGX
@@ -45,6 +46,36 @@ the ciphertext and CP partial share, preserving purpose/context binding at the
 protocol boundary. This is a capability and
 protocol-layer boundary; deployment authorization still depends on the future
 authenticated transport and attestation work listed above.
+
+### M2B fused predicate path
+
+In SIM/HW, optimizer predicates use a dedicated semi-honest fused path instead
+of converting every SCMP result back into a Paillier `EncryptedBit`.  Paillier
+SCMP naturally leaves the two parties with XOR shares: CP retains the fresh
+random orientation bit and CSP retains only the randomized comparison bit, so
+`compare_bit = cp_share XOR csp_share`.  CP garbles the fixed, public
+`PRUNE_NODE` or `ACCEPT_CANDIDATE` Boolean circuit.  Fresh 3072-bit RSA-OT
+(`RSA_F4`) transfers exactly one input label for each CSP share; OT nonces,
+shares, masks, wire labels, and garbling randomness are independently sampled
+for every predicate and are not reused.  XOR and NOT are local free-XOR
+operations, while each Boolean AND is a garbled gate.  CSP evaluates the fixed
+circuit, decodes the output label, and releases only the single final
+PRUNE/ACCEPT decision bit; neither
+party reconstructs an intermediate comparison or predicate wire.
+
+The F and G transcript stages bind the session ID, operation ID, predicate
+type, depth, and node ID.  A transcript is consumed at F before secret work;
+malformed, mismatched, interrupted, or replayed transcripts discard pending
+state and cannot be resumed under the same operation identity.  The generic
+`greaterThan`, `secureMul`, and `EncryptedBit` APIs remain available to
+non-predicate callers and retain their existing behavior.
+
+This construction targets semi-honest CP and CSP only.  It is not a
+malicious-secure OT or garbled-circuit implementation, does not provide OT
+extension, and does not replace authenticated transport, remote attestation,
+deployment authorization, anti-rollback, constant-time big-integer work, or a
+formal protocol proof.  Those production gaps and the final-only optimizer
+leakage boundary remain unchanged.
 
 ## Encrypted optimizer leakage boundary
 

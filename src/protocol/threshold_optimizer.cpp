@@ -48,6 +48,12 @@ class ThresholdConfidentialRuntime::Impl {
     stats.csp_encrypt_seconds=(after.csp_encrypt_microseconds-before.csp_encrypt_microseconds)/1'000'000.0;
     stats.csp_parse_serialize_seconds=(after.csp_parse_serialize_microseconds-before.csp_parse_serialize_microseconds)/1'000'000.0;
     stats.csp_socket_send_seconds=(after.csp_socket_send_microseconds-before.csp_socket_send_microseconds)/1'000'000.0;
+    stats.fused_cp_rsa_private_powm_seconds=(after.fused_cp_rsa_private_powm_microseconds-before.fused_cp_rsa_private_powm_microseconds)/1'000'000.0;
+    stats.fused_csp_rsa_public_powm_seconds=(after.fused_csp_rsa_public_powm_microseconds-before.fused_csp_rsa_public_powm_microseconds)/1'000'000.0;
+    stats.fused_garble_seconds=(after.fused_garble_microseconds-before.fused_garble_microseconds)/1'000'000.0;
+    stats.fused_circuit_evaluate_seconds=(after.fused_circuit_evaluate_microseconds-before.fused_circuit_evaluate_microseconds)/1'000'000.0;
+    stats.fused_f_request_seconds=(after.fused_f_request_microseconds-before.fused_f_request_microseconds)/1'000'000.0;
+    stats.fused_g_request_seconds=(after.fused_g_request_microseconds-before.fused_g_request_microseconds)/1'000'000.0;
     stats.host_encrypt_calls=after.host_encrypt_calls-before.host_encrypt_calls;
     stats.host_scalar_powm_calls=after.host_scalar_powm_calls-before.host_scalar_powm_calls;
     return result;

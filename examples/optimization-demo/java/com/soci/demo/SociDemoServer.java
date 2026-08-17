@@ -156,6 +156,12 @@ public final class SociDemoServer implements AutoCloseable {
       .append(",\"csp_encrypt_seconds\":").append(r.cspEncryptSeconds)
       .append(",\"csp_parse_serialize_seconds\":").append(r.cspParseSerializeSeconds)
       .append(",\"csp_socket_send_seconds\":").append(r.cspSocketSendSeconds)
+      .append(",\"fused_cp_rsa_private_powm_seconds\":").append(r.fusedCpRsaPrivatePowmSeconds)
+      .append(",\"fused_csp_rsa_public_powm_seconds\":").append(r.fusedCspRsaPublicPowmSeconds)
+      .append(",\"fused_garble_seconds\":").append(r.fusedGarbleSeconds)
+      .append(",\"fused_circuit_evaluate_seconds\":").append(r.fusedCircuitEvaluateSeconds)
+      .append(",\"fused_f_request_seconds\":").append(r.fusedFRequestSeconds)
+      .append(",\"fused_g_request_seconds\":").append(r.fusedGRequestSeconds)
       .append(",\"preprocessing_seconds\":").append(r.preprocessingSeconds)
       .append(",\"search_seconds\":").append(r.searchSeconds)
       .append(",\"total_seconds\":").append(r.totalSeconds).append("}}");

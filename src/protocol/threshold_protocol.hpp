@@ -23,6 +23,12 @@ struct ProtocolMetrics {
   double csp_encrypt_microseconds{};
   double csp_parse_serialize_microseconds{};
   double csp_socket_send_microseconds{};
+  double fused_cp_rsa_private_powm_microseconds{};
+  double fused_csp_rsa_public_powm_microseconds{};
+  double fused_garble_microseconds{};
+  double fused_circuit_evaluate_microseconds{};
+  double fused_f_request_microseconds{};
+  double fused_g_request_microseconds{};
   std::uint64_t host_encrypt_calls{};
   std::uint64_t host_scalar_powm_calls{};
   std::uint64_t logical_items{};

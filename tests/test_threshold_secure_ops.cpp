@@ -186,6 +186,19 @@ int main(int argc, char** argv) {
                 predicate_metrics_after.predicate_reveals -
                 predicate_metrics_before.predicate_reveals == 3,
             "predicate batching did not reduce ECALL/request dispatches");
+    require(predicate_metrics_after.fused_cp_rsa_private_powm_microseconds>
+                predicate_metrics_before.fused_cp_rsa_private_powm_microseconds&&
+                predicate_metrics_after.fused_garble_microseconds>
+                predicate_metrics_before.fused_garble_microseconds&&
+                predicate_metrics_after.fused_f_request_microseconds>
+                predicate_metrics_before.fused_f_request_microseconds&&
+                predicate_metrics_after.fused_g_request_microseconds>
+                predicate_metrics_before.fused_g_request_microseconds,
+            "CP fused profiling did not record every RSA/GC/request stage");
+    protocol.refreshCspMetrics();
+    require(protocol.metrics().fused_csp_rsa_public_powm_microseconds>0&&
+                protocol.metrics().fused_circuit_evaluate_microseconds>0,
+            "CSP fused profiling did not record RSA/evaluate stages");
     stage = "fused predicate replay";
     ++predicate_sequence;
     const auto fused_replay =
