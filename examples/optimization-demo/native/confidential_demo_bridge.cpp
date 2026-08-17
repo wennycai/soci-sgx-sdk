@@ -143,7 +143,7 @@ jobject resultObject(JNIEnv* env, const EncryptedBranchAndBoundResult& result) {
     env->SetObjectArrayElement(ciphertexts, i, byteArray(env, values[i].bytes));
   jclass cls = env->FindClass("com/soci/sdk/ConfidentialOptimizationResult");
   jmethodID ctor = env->GetMethodID(cls, "<init>",
-      "(Z[I[[BJJJJJJJJJJJJJDDD)V");
+      "(Z[I[[BJJJJJJJJJJJJJJJDDDDDDDD)V");
   const auto& s = result.stats;
   return env->NewObject(cls, ctor, result.feasible ? JNI_TRUE : JNI_FALSE,
       solution, ciphertexts, static_cast<jlong>(s.visited_nodes),
@@ -154,8 +154,11 @@ jobject resultObject(JNIEnv* env, const EncryptedBranchAndBoundResult& result) {
       static_cast<jlong>(s.smul_logical_items),static_cast<jlong>(s.smul_dispatches),
       static_cast<jlong>(s.cp_ecalls),static_cast<jlong>(s.csp_ecalls),
       static_cast<jlong>(s.csp_requests),static_cast<jlong>(s.predicate_reveals),
-      s.preprocessing_seconds,
-      s.search_seconds, s.total_seconds);
+      static_cast<jlong>(s.host_encrypt_calls),
+      static_cast<jlong>(s.host_scalar_powm_calls),s.host_encrypt_seconds,
+      s.host_scalar_powm_seconds,s.cp_enclave_seconds,s.csp_enclave_seconds,
+      s.network_seconds,s.preprocessing_seconds,s.search_seconds,
+      s.total_seconds);
 }
 }  // namespace
 

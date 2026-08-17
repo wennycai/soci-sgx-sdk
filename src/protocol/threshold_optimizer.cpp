@@ -36,6 +36,11 @@ class ThresholdConfidentialRuntime::Impl {
     stats.predicate_reveals=after.predicate_reveals-before.predicate_reveals;
     stats.cp_enclave_seconds=(after.cp_enclave_microseconds-before.cp_enclave_microseconds)/1'000'000.0;
     stats.network_seconds=(after.network_microseconds-before.network_microseconds)/1'000'000.0;
+    stats.host_encrypt_seconds=(after.host_encrypt_microseconds-before.host_encrypt_microseconds)/1'000'000.0;
+    stats.host_scalar_powm_seconds=(after.host_scalar_powm_microseconds-before.host_scalar_powm_microseconds)/1'000'000.0;
+    stats.csp_enclave_seconds=(after.csp_enclave_microseconds-before.csp_enclave_microseconds)/1'000'000.0;
+    stats.host_encrypt_calls=after.host_encrypt_calls-before.host_encrypt_calls;
+    stats.host_scalar_powm_calls=after.host_scalar_powm_calls-before.host_scalar_powm_calls;
     return result;
   }
 

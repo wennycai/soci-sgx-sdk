@@ -10,6 +10,9 @@ public final class ConfidentialOptimizationResult {
   public final long scmpLogicalItems, scmpDispatches, smulLogicalItems,
       smulDispatches, cpEcalls, cspEcalls, cspRequests, predicateReveals;
   public final double preprocessingSeconds, searchSeconds, totalSeconds;
+  public final double hostEncryptSeconds, hostScalarPowmSeconds,
+      cpEnclaveSeconds, cspEnclaveSeconds, networkSeconds;
+  public final long hostEncryptCalls, hostScalarPowmCalls;
 
   public ConfidentialOptimizationResult(boolean feasible, int[] solution,
       byte[][] ciphertexts, long visitedNodes, long prunedNodes,
@@ -17,7 +20,11 @@ public final class ConfidentialOptimizationResult {
       long scmpLogicalItems, long scmpDispatches, long smulLogicalItems,
       long smulDispatches, long cpEcalls, long cspEcalls, long cspRequests,
       long predicateReveals,
-      double preprocessingSeconds, double searchSeconds, double totalSeconds) {
+      long hostEncryptCalls,long hostScalarPowmCalls,
+      double hostEncryptSeconds,double hostScalarPowmSeconds,
+      double cpEnclaveSeconds,double cspEnclaveSeconds,double networkSeconds,
+      double preprocessingSeconds,
+      double searchSeconds,double totalSeconds) {
     this.feasible=feasible; this.solution=solution.clone();
     this.ciphertexts=ciphertexts.clone(); this.visitedNodes=visitedNodes;
     this.prunedNodes=prunedNodes; this.candidateCount=candidateCount;
@@ -27,6 +34,13 @@ public final class ConfidentialOptimizationResult {
     this.smulLogicalItems=smulLogicalItems;this.smulDispatches=smulDispatches;
     this.cpEcalls=cpEcalls;this.cspEcalls=cspEcalls;
     this.cspRequests=cspRequests;this.predicateReveals=predicateReveals;
+    this.hostEncryptCalls=hostEncryptCalls;
+    this.hostScalarPowmCalls=hostScalarPowmCalls;
+    this.hostEncryptSeconds=hostEncryptSeconds;
+    this.hostScalarPowmSeconds=hostScalarPowmSeconds;
+    this.cpEnclaveSeconds=cpEnclaveSeconds;
+    this.cspEnclaveSeconds=cspEnclaveSeconds;
+    this.networkSeconds=networkSeconds;
     this.preprocessingSeconds=preprocessingSeconds;
     this.searchSeconds=searchSeconds; this.totalSeconds=totalSeconds;
   }

@@ -302,6 +302,7 @@ class ThresholdProtocolClient::Impl {
   }
 
   mpz_class encrypt(const mpz_class& plaintext) {
+    const auto start=Clock::now();
     mpz_class nonce, nonce_n;
     do nonce = randomBelow(modulus);
     while (nonce == 0 || gcd(nonce, modulus) != 1);
@@ -313,6 +314,9 @@ class ThresholdProtocolClient::Impl {
     message_factor += 1;
     mpz_class ciphertext = message_factor * nonce_n;
     ciphertext %= modulus_squared;
+    metrics.host_encrypt_microseconds+=
+        std::chrono::duration<double,std::micro>(Clock::now()-start).count();
+    ++metrics.host_encrypt_calls;
     return ciphertext;
   }
 
@@ -344,7 +348,12 @@ mpz_class ThresholdProtocolClient::add(const mpz_class& a,
 
 mpz_class ThresholdProtocolClient::scalarMultiply(
     const mpz_class& value, const mpz_class& scalar) const {
-  return ciphertextPower(value, scalar, impl_->modulus_squared);
+  const auto start=Clock::now();
+  auto output=ciphertextPower(value,scalar,impl_->modulus_squared);
+  impl_->metrics.host_scalar_powm_microseconds+=
+      std::chrono::duration<double,std::micro>(Clock::now()-start).count();
+  ++impl_->metrics.host_scalar_powm_calls;
+  return output;
 }
 
 mpz_class ThresholdProtocolClient::secureMultiply(const mpz_class& a,
@@ -399,7 +408,8 @@ std::vector<mpz_class> ThresholdProtocolClient::secureMultiplyBatch(
   if(reply.size()<8||reply[0]!=1||reply[1]!=0||reply[2]!=0||reply[3]!=0||wire::readU32(reply.data()+4)!=items.size()) throw std::runtime_error("bad SMUL batch response");
   std::size_t offset=8;std::vector<mpz_class> output;output.reserve(items.size());
   for(std::size_t i=0;i<items.size();++i){auto product=wire::takeInteger(reply,offset);product=add(product,scalarMultiply(items[i].first,-r2[i]));product=add(product,scalarMultiply(items[i].second,-r1[i]));output.push_back(add(product,encrypt(-r1[i]*r2[i])));}
-  if(offset!=reply.size()) throw std::runtime_error("trailing SMUL batch response");
+  if(reply.size()-offset!=8) throw std::runtime_error("bad SMUL batch timing data");
+  measured->csp_enclave_microseconds+=wire::readU64(reply.data()+offset)/1000.0;
   measured->logical_items+=items.size();measured->smul_logical_items+=items.size();
   ++measured->smul_dispatches;++measured->cp_ecalls;++measured->csp_ecalls;
   ++measured->csp_requests;
@@ -462,7 +472,7 @@ std::vector<mpz_class> ThresholdProtocolClient::greaterThanBatch(
   for(std::size_t i=0;i<items.size();++i){wire::appendInteger(request,differences[i]);wire::appendInteger(request,shares[i]);}
   auto reply=wire::requestPayload(impl_->socket,std::move(request),net);
   if(reply.size()<8||reply[0]!=1||reply[1]!=0||reply[2]!=0||reply[3]!=0||wire::readU32(reply.data()+4)!=items.size())throw std::runtime_error("bad SCMP batch response");
-  std::size_t offset=8;std::vector<mpz_class> output;output.reserve(items.size());for(std::size_t i=0;i<items.size();++i){const auto bit=wire::takeInteger(reply,offset);output.push_back(orientations[i]?add(encrypt(1),scalarMultiply(bit,-1)):bit);}if(offset!=reply.size())throw std::runtime_error("trailing SCMP batch response");
+  std::size_t offset=8;std::vector<mpz_class> output;output.reserve(items.size());for(std::size_t i=0;i<items.size();++i){const auto bit=wire::takeInteger(reply,offset);output.push_back(orientations[i]?add(encrypt(1),scalarMultiply(bit,-1)):bit);}if(reply.size()-offset!=8)throw std::runtime_error("bad SCMP batch timing data");measured->csp_enclave_microseconds+=wire::readU64(reply.data()+offset)/1000.0;
   measured->logical_items+=items.size();measured->scmp_logical_items+=items.size();
   ++measured->scmp_dispatches;++measured->cp_ecalls;++measured->csp_ecalls;
   ++measured->csp_requests;return output;
@@ -725,10 +735,15 @@ int runThresholdCsp(const std::string& enclave_path,
           std::vector<mpz_class> ciphertexts,cp_shares;
           ciphertexts.reserve(count);cp_shares.reserve(count);
           for(const auto& item:batch){ciphertexts.push_back(item.ciphertext);cp_shares.push_back(item.cp_share);}
+          const auto csp_ecall_start=Clock::now();
           const auto plaintexts=thresholdDecryptBatch(enclave,ciphertexts,cp_shares,mode);
+          const auto csp_ecall_ns=static_cast<std::uint64_t>(
+              std::chrono::duration_cast<std::chrono::nanoseconds>(
+                  Clock::now()-csp_ecall_start).count());
           std::vector<mpz_class> results;results.reserve(count);
           for(std::size_t i=0;i<batch.size();++i){const auto& item=batch[i];const auto& plaintext=plaintexts[i];if(request[1]=='M'){const auto masked_a=plaintext/item.base;const auto masked_b=plaintext%item.base;results.push_back(encrypt(masked_a*masked_b));}else results.push_back(encrypt(plaintext>modulus/2?0:1));}
           for(const auto& result:results) wire::appendInteger(reply,result);
+          wire::appendU64(reply,csp_ecall_ns);
           wire::sendFrame(socket,reply);continue;
         }
         if (operation == 'P') {

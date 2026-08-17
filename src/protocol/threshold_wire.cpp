@@ -37,6 +37,16 @@ void writeU32(std::uint8_t* p, std::uint32_t value) {
   p[3] = value;
 }
 
+std::uint64_t readU64(const std::uint8_t* p) {
+  return (std::uint64_t(readU32(p)) << 32) | readU32(p + 4);
+}
+
+void appendU64(Bytes& output, std::uint64_t value) {
+  const auto offset=output.size();output.resize(offset+8);
+  writeU32(output.data()+offset,static_cast<std::uint32_t>(value>>32));
+  writeU32(output.data()+offset+4,static_cast<std::uint32_t>(value));
+}
+
 void appendInteger(Bytes& output, const mpz_class& value) {
   const std::size_t size = (mpz_sizeinbase(value.get_mpz_t(), 2) + 7) / 8;
   if (size == 0 || size > UINT32_MAX || output.size() > SIZE_MAX - 4 - size)

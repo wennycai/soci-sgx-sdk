@@ -16,6 +16,11 @@ enum class ThresholdMode : std::uint8_t { sim = 1, hw = 2 };
 struct ProtocolMetrics {
   double cp_enclave_microseconds{};
   double network_microseconds{};
+  double host_encrypt_microseconds{};
+  double host_scalar_powm_microseconds{};
+  double csp_enclave_microseconds{};
+  std::uint64_t host_encrypt_calls{};
+  std::uint64_t host_scalar_powm_calls{};
   std::uint64_t logical_items{};
   std::uint64_t cp_ecalls{};
   std::uint64_t csp_requests{};

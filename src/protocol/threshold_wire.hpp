@@ -12,6 +12,8 @@ using Bytes = std::vector<std::uint8_t>;
 
 std::uint32_t readU32(const std::uint8_t* data);
 void writeU32(std::uint8_t* data, std::uint32_t value);
+std::uint64_t readU64(const std::uint8_t* data);
+void appendU64(Bytes& output, std::uint64_t value);
 void appendInteger(Bytes& output, const mpz_class& value);
 mpz_class takeInteger(const Bytes& input, std::size_t& offset);
 

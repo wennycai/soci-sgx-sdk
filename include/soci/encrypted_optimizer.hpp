@@ -43,6 +43,11 @@ struct EncryptedOptimizationStats {
   std::uint64_t predicate_reveals{};
   double cp_enclave_seconds{};
   double network_seconds{};
+  double host_encrypt_seconds{};
+  double host_scalar_powm_seconds{};
+  double csp_enclave_seconds{};
+  std::uint64_t host_encrypt_calls{};
+  std::uint64_t host_scalar_powm_calls{};
   double preprocessing_seconds{};
   double search_seconds{};
   double total_seconds{};
