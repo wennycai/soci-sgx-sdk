@@ -52,7 +52,7 @@ bool export_at(uint8_t*out,size_t cap,size_t*pos,const mpz_t z){
   size_t wrote=0;mpz_export(out+*pos,&wrote,1,1,1,0,z);if(!wrote&&mpz_cmp_ui(z,0)==0){out[*pos]=0;wrote=1;}*pos+=wrote;return wrote==len;
 }
 bool import_at(mpz_t z,const uint8_t*in,size_t size,size_t*pos){
-  if(*pos+4>size)return false;uint32_t len=be32(in+*pos);*pos+=4;if(!len||*pos+len>size)return false;
+  if(*pos>size||size-*pos<4)return false;uint32_t len=be32(in+*pos);*pos+=4;if(!len||len>size-*pos)return false;
   mpz_import(z,len,1,1,1,0,in+*pos);*pos+=len;return true;
 }
 
@@ -150,6 +150,20 @@ uint32_t ecall_partial_decrypt(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,
   if(!good){wipe(c);wipe(u);return INVALID;}if(!out||cap<required){wipe(c);wipe(u);return BUFFER;}
   memcpy(out,"SPAR",4);out[4]=1;out[5]=runtime_mode;out[6]=role;out[7]=0;put32(out+8,(uint32_t)len);
   size_t wrote=0;mpz_export(out+12,&wrote,1,1,1,0,u);wipe(c);wipe(u);return wrote==len?OK:CRYPTO;
+}
+#define MAX_BATCH_SIZE 16u
+uint32_t ecall_partial_decrypt_batch(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,size_t*out_size){
+  if(!initialized||!keyed||(role!=1&&role!=2))return STATE;
+  if(!out_size||!header(in,in_size,"SPDB")||in_size<12||in[6]!=0||in[7]!=0)return INVALID;
+  uint32_t count=be32(in+8);if(!count||count>MAX_BATCH_SIZE)return INVALID;
+  size_t pos=12,out_pos=12;mpz_t c,u;mpz_init(c);mpz_init(u);bool good=true;
+  for(uint32_t i=0;i<count&&good;i++){
+    good=import_at(c,in,in_size,&pos)&&mpz_cmp_ui(c,0)>0&&mpz_cmp(c,nsq)<0;
+    if(good){mpz_powm(u,c,lambda_z,nsq);good=export_at(out,cap,&out_pos,u);}
+  }
+  good=good&&pos==in_size;
+  if(good&&cap>=12){memcpy(out,"SPBR",4);out[4]=1;out[5]=runtime_mode;out[6]=role;out[7]=0;put32(out+8,count);*out_size=out_pos;}
+  wipe(c);wipe(u);return good?OK:(out_pos>cap?BUFFER:INVALID);
 }
 uint32_t ecall_combine_decrypt(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,size_t*out_size){
   if(!initialized||!keyed||role!=2)return STATE;

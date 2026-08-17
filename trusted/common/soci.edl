@@ -9,6 +9,8 @@ enclave {
       [out, size=output_capacity] uint8_t* output, size_t output_capacity, [out] size_t* output_size);
     public uint32_t ecall_partial_decrypt([in, size=input_size] uint8_t* input, size_t input_size,
       [out, size=output_capacity] uint8_t* output, size_t output_capacity, [out] size_t* output_size);
+    public uint32_t ecall_partial_decrypt_batch([in, size=input_size] uint8_t* input, size_t input_size,
+      [out, size=output_capacity] uint8_t* output, size_t output_capacity, [out] size_t* output_size);
     public uint32_t ecall_combine_decrypt([in, size=input_size] uint8_t* input, size_t input_size,
       [out, size=output_capacity] uint8_t* output, size_t output_capacity, [out] size_t* output_size);
     public uint32_t ecall_load_sealed_key([in, size=input_size] uint8_t* input, size_t input_size);

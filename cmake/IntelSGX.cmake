@@ -143,7 +143,7 @@ add_executable(soci_threshold_runtime services/threshold_runtime.cpp)
 target_include_directories(soci_threshold_runtime PRIVATE
   "${PROJECT_SOURCE_DIR}/src" "${PROJECT_SOURCE_DIR}/include")
 target_link_directories(soci_threshold_runtime PRIVATE "${SGX_LIBRARY_DIR}")
-target_link_libraries(soci_threshold_runtime PRIVATE soci_threshold_protocol)
+target_link_libraries(soci_threshold_runtime PRIVATE soci_threshold_protocol soci_sdk)
 if(SOCI_SGX_MODE STREQUAL "HW")
   set_target_properties(soci_threshold_runtime PROPERTIES SKIP_BUILD_RPATH TRUE)
 endif()

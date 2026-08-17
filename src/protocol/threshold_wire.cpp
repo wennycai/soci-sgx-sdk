@@ -39,6 +39,8 @@ void writeU32(std::uint8_t* p, std::uint32_t value) {
 
 void appendInteger(Bytes& output, const mpz_class& value) {
   const std::size_t size = (mpz_sizeinbase(value.get_mpz_t(), 2) + 7) / 8;
+  if (size == 0 || size > UINT32_MAX || output.size() > SIZE_MAX - 4 - size)
+    throw std::runtime_error("integer too large");
   const std::size_t offset = output.size();
   output.resize(offset + 4 + size);
   writeU32(output.data() + offset, static_cast<std::uint32_t>(size));
@@ -51,7 +53,7 @@ mpz_class takeInteger(const Bytes& input, std::size_t& offset) {
   if (offset + 4 > input.size()) throw std::runtime_error("short integer");
   const auto size = readU32(input.data() + offset);
   offset += 4;
-  if (size == 0 || offset + size > input.size())
+  if (size == 0 || size > input.size() - offset)
     throw std::runtime_error("bad integer");
   mpz_class value;
   mpz_import(value.get_mpz_t(), size, 1, 1, 1, 0, input.data() + offset);

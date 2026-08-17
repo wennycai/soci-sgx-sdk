@@ -129,6 +129,7 @@ int main(int argc, char** argv) {
     require(reveal(ops.secureMul(number(-5), number(3))) == -15,
             "negative secureMul failed");
     stage = "semantic predicates";
+    const auto predicate_metrics_before = protocol.metrics();
     ++predicate_sequence;
     require(predicate_engine.pruneNode(
                 predicateContext(soci::secure::PredicateType::prune_node),
@@ -146,6 +147,15 @@ int main(int argc, char** argv) {
                 {number(0), number(1), number(10), number(5), true,
                  number(10), number(6)}),
             "equal-cost better-c12 candidate rejected");
+    const auto predicate_metrics_after = protocol.metrics();
+    require(predicate_metrics_after.logical_items -
+                predicate_metrics_before.logical_items == 14,
+            "predicate batching changed SCMP/SMUL logical call count");
+    require(predicate_metrics_after.cp_ecalls -
+                predicate_metrics_before.cp_ecalls == 8 &&
+                predicate_metrics_after.csp_requests -
+                predicate_metrics_before.csp_requests == 8,
+            "predicate batching did not reduce ECALL/request dispatches");
     stage = "composite operations";
     const auto yes = ops.greaterThan(number(5), number(3));
     const auto no = ops.greaterThan(number(3), number(5));

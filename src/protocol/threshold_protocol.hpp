@@ -15,6 +15,9 @@ enum class ThresholdMode : std::uint8_t { sim = 1, hw = 2 };
 struct ProtocolMetrics {
   double cp_enclave_microseconds{};
   double network_microseconds{};
+  std::uint64_t logical_items{};
+  std::uint64_t cp_ecalls{};
+  std::uint64_t csp_requests{};
 };
 
 class ThresholdProtocolClient {
@@ -32,9 +35,15 @@ class ThresholdProtocolClient {
                            const mpz_class& scalar) const;
   mpz_class secureMultiply(const mpz_class& a, const mpz_class& b,
                            ProtocolMetrics* metrics = nullptr);
+  std::vector<mpz_class> secureMultiplyBatch(
+      const std::vector<std::pair<mpz_class, mpz_class>>& items,
+      ProtocolMetrics* metrics = nullptr);
   // Returns Enc(a > b).
   mpz_class greaterThan(const mpz_class& a, const mpz_class& b,
                         ProtocolMetrics* metrics = nullptr);
+  std::vector<mpz_class> greaterThanBatch(
+      const std::vector<std::pair<mpz_class, mpz_class>>& items,
+      ProtocolMetrics* metrics = nullptr);
 
   // Management/benchmark API only; it is deliberately absent from SecureOps.
   mpz_class decryptForTesting(const mpz_class& ciphertext,
@@ -42,6 +51,7 @@ class ThresholdProtocolClient {
   void requestServerShutdown();
   const mpz_class& modulus() const noexcept;
   ThresholdMode mode() const noexcept;
+  const ProtocolMetrics& metrics() const noexcept;
 
  private:
   bool revealFinalPredicate(const secure::PredicateContext& context,
@@ -64,8 +74,12 @@ class ThresholdSecureOps final : public secure::SecureOps {
                                std::int64_t scalar) override;
   secure::Ciphertext secureMul(const secure::Ciphertext& a,
                                const secure::Ciphertext& b) override;
+  std::vector<secure::Ciphertext> secureMulBatch(
+      const std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>>& items) override;
   secure::EncryptedBit greaterThan(const secure::Ciphertext& a,
                                    const secure::Ciphertext& b) override;
+  std::vector<secure::EncryptedBit> greaterThanBatch(
+      const std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>>& items) override;
   const secure::NumericDomain& domain() const noexcept override {
     return domain_;
   }

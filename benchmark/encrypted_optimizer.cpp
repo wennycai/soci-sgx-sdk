@@ -82,7 +82,8 @@ void print(const char* mode, std::size_t rows, std::size_t requested_k,
   const auto& stats = run.result.stats;
   const auto& counts = run.counts;
   const auto estimated_round_trips =
-      counts.secure_compare + counts.secure_mul + run.resolver_calls;
+      counts.secure_compare_dispatches + counts.secure_mul_dispatches +
+      run.resolver_calls;
   std::cout
       << "{\"mode\":\"" << mode << "\",\"rows\":" << rows
       << ",\"requested_k\":" << requested_k << ",\"actual_k\":"
@@ -91,6 +92,8 @@ void print(const char* mode, std::size_t rows, std::size_t requested_k,
       << ",\"candidate_count\":" << stats.candidate_count
       << ",\"secure_compare\":" << counts.secure_compare
       << ",\"secure_mul\":" << counts.secure_mul
+      << ",\"secure_compare_dispatches\":" << counts.secure_compare_dispatches
+      << ",\"secure_mul_dispatches\":" << counts.secure_mul_dispatches
       << ",\"scalar_mul\":" << counts.scalar_mul
       << ",\"round_trips_estimate\":" << estimated_round_trips
       << ",\"preprocessing_seconds\":" << stats.preprocessing_seconds

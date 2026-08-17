@@ -12,6 +12,8 @@ struct SecureOpsCounts {
   std::uint64_t scalar_mul{};
   std::uint64_t secure_mul{};
   std::uint64_t secure_compare{};
+  std::uint64_t secure_mul_dispatches{};
+  std::uint64_t secure_compare_dispatches{};
 };
 
 class CountingSecureOps final : public secure::SecureOps {
@@ -36,12 +38,26 @@ class CountingSecureOps final : public secure::SecureOps {
   secure::Ciphertext secureMul(const secure::Ciphertext& a,
                                const secure::Ciphertext& b) override {
     ++counts_.secure_mul;
+    ++counts_.secure_mul_dispatches;
     return delegate_.secureMul(a, b);
+  }
+  std::vector<secure::Ciphertext> secureMulBatch(
+      const std::vector<std::pair<secure::Ciphertext,secure::Ciphertext>>& items) override {
+    counts_.secure_mul += items.size();
+    ++counts_.secure_mul_dispatches;
+    return delegate_.secureMulBatch(items);
   }
   secure::EncryptedBit greaterThan(const secure::Ciphertext& a,
                                    const secure::Ciphertext& b) override {
     ++counts_.secure_compare;
+    ++counts_.secure_compare_dispatches;
     return delegate_.greaterThan(a, b);
+  }
+  std::vector<secure::EncryptedBit> greaterThanBatch(
+      const std::vector<std::pair<secure::Ciphertext,secure::Ciphertext>>& items) override {
+    counts_.secure_compare += items.size();
+    ++counts_.secure_compare_dispatches;
+    return delegate_.greaterThanBatch(items);
   }
   const secure::NumericDomain& domain() const noexcept override {
     return delegate_.domain();

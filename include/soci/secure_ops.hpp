@@ -46,10 +46,14 @@ class SecureOps {
   virtual Ciphertext add(const Ciphertext& a, const Ciphertext& b) = 0;
   virtual Ciphertext scalarMul(const Ciphertext& a, std::int64_t scalar) = 0;
   virtual Ciphertext secureMul(const Ciphertext& a, const Ciphertext& b) = 0;
+  virtual std::vector<Ciphertext> secureMulBatch(
+      const std::vector<std::pair<Ciphertext, Ciphertext>>& items);
 
   // Returns Enc(a > b). This direction is part of the public contract.
   virtual EncryptedBit greaterThan(const Ciphertext& a,
                                    const Ciphertext& b) = 0;
+  virtual std::vector<EncryptedBit> greaterThanBatch(
+      const std::vector<std::pair<Ciphertext, Ciphertext>>& items);
 
   Ciphertext sub(const Ciphertext& a, const Ciphertext& b);
   EncryptedBit lessThan(const Ciphertext& a, const Ciphertext& b);
@@ -59,6 +63,12 @@ class SecureOps {
   EncryptedBit bitNot(const EncryptedBit& bit);
   EncryptedBit bitAnd(const EncryptedBit& a, const EncryptedBit& b);
   EncryptedBit bitOr(const EncryptedBit& a, const EncryptedBit& b);
+  std::vector<EncryptedBit> bitAndBatch(
+      const std::vector<std::pair<EncryptedBit, EncryptedBit>>& items);
+  std::vector<EncryptedBit> bitOrBatch(
+      const std::vector<std::pair<EncryptedBit, EncryptedBit>>& items);
+  EncryptedBit bitOrFromProduct(const EncryptedBit& a, const EncryptedBit& b,
+                                const EncryptedBit& product);
   Ciphertext select(const EncryptedBit& condition,
                     const Ciphertext& true_value,
                     const Ciphertext& false_value);

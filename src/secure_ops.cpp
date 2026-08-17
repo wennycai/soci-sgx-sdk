@@ -4,6 +4,22 @@
 
 namespace soci::secure {
 
+std::vector<Ciphertext> SecureOps::secureMulBatch(
+    const std::vector<std::pair<Ciphertext, Ciphertext>>& items) {
+  std::vector<Ciphertext> output;
+  output.reserve(items.size());
+  for (const auto& item : items) output.push_back(secureMul(item.first, item.second));
+  return output;
+}
+
+std::vector<EncryptedBit> SecureOps::greaterThanBatch(
+    const std::vector<std::pair<Ciphertext, Ciphertext>>& items) {
+  std::vector<EncryptedBit> output;
+  output.reserve(items.size());
+  for (const auto& item : items) output.push_back(greaterThan(item.first, item.second));
+  return output;
+}
+
 Ciphertext SecureOps::sub(const Ciphertext& a, const Ciphertext& b) {
   return add(a, scalarMul(b, -1));
 }
@@ -38,6 +54,42 @@ EncryptedBit SecureOps::bitOr(const EncryptedBit& a,
                               const EncryptedBit& b) {
   const auto product = secureMul(a.ciphertext(), b.ciphertext());
   return encryptedBit(sub(add(a.ciphertext(), b.ciphertext()), product));
+}
+
+std::vector<EncryptedBit> SecureOps::bitAndBatch(
+    const std::vector<std::pair<EncryptedBit, EncryptedBit>>& items) {
+  std::vector<std::pair<Ciphertext, Ciphertext>> operands;
+  operands.reserve(items.size());
+  for (const auto& item : items)
+    operands.emplace_back(item.first.ciphertext(), item.second.ciphertext());
+  auto products = secureMulBatch(operands);
+  std::vector<EncryptedBit> output;
+  output.reserve(products.size());
+  for (auto& product : products) output.push_back(encryptedBit(std::move(product)));
+  return output;
+}
+
+std::vector<EncryptedBit> SecureOps::bitOrBatch(
+    const std::vector<std::pair<EncryptedBit, EncryptedBit>>& items) {
+  std::vector<std::pair<Ciphertext, Ciphertext>> operands;
+  operands.reserve(items.size());
+  for (const auto& item : items)
+    operands.emplace_back(item.first.ciphertext(), item.second.ciphertext());
+  auto products = secureMulBatch(operands);
+  std::vector<EncryptedBit> output;
+  output.reserve(products.size());
+  for (std::size_t i = 0; i < items.size(); ++i)
+    output.push_back(encryptedBit(sub(add(items[i].first.ciphertext(),
+                                          items[i].second.ciphertext()),
+                                      products[i])));
+  return output;
+}
+
+EncryptedBit SecureOps::bitOrFromProduct(const EncryptedBit& a,
+                                         const EncryptedBit& b,
+                                         const EncryptedBit& product) {
+  return encryptedBit(sub(add(a.ciphertext(), b.ciphertext()),
+                          product.ciphertext()));
 }
 
 Ciphertext SecureOps::select(const EncryptedBit& condition,
