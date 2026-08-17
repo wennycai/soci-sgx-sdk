@@ -36,6 +36,9 @@ class ThresholdConfidentialRuntime::Impl {
     stats.csp_ecalls=after.csp_ecalls-before.csp_ecalls;
     stats.csp_requests=after.csp_requests-before.csp_requests;
     stats.predicate_reveals=after.predicate_reveals-before.predicate_reveals;
+    stats.secure_bit_and_items=after.secure_bit_and_items-before.secure_bit_and_items;
+    stats.predicate_csp_encryptions=after.predicate_csp_encryptions-before.predicate_csp_encryptions;
+    stats.predicate_final_threshold_decrypts=after.predicate_final_threshold_decrypts-before.predicate_final_threshold_decrypts;
     stats.cp_enclave_seconds=(after.cp_enclave_microseconds-before.cp_enclave_microseconds)/1'000'000.0;
     stats.network_seconds=(after.network_microseconds-before.network_microseconds)/1'000'000.0;
     stats.host_encrypt_seconds=(after.host_encrypt_microseconds-before.host_encrypt_microseconds)/1'000'000.0;

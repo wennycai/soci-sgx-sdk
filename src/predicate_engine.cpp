@@ -44,6 +44,14 @@ std::string PredicateEngine::replayKey(const PredicateContext& context) {
 
 bool PredicateEngine::pruneNode(const PredicateContext& context,
                                 const PruneInputs& inputs) {
+  if (auto* fused=dynamic_cast<FusedPredicateBackend*>(&ops_);
+      fused && fused->predicateFusionEnabled()) {
+    if (inputs.has_incumbent &&
+        (inputs.incumbent_cost.bytes.empty() || inputs.cost_lowers.empty()))
+      throw PredicateError("missing incumbent cost or cost lower bounds");
+    authorizeAndConsume(context,PredicateType::prune_node);
+    return fused->fusedPruneNode(context,inputs);
+  }
   const auto zero = ops_.encryptConstant(0);
   std::vector<std::pair<Ciphertext, Ciphertext>> comparisons;
   comparisons.emplace_back(zero, inputs.linear_upper); // linear_upper < 0
@@ -76,6 +84,14 @@ bool PredicateEngine::pruneNode(const PredicateContext& context,
 
 bool PredicateEngine::acceptCandidate(const PredicateContext& context,
                                       const AcceptInputs& inputs) {
+  if (auto* fused=dynamic_cast<FusedPredicateBackend*>(&ops_);
+      fused && fused->predicateFusionEnabled()) {
+    if (inputs.has_incumbent &&
+        (inputs.incumbent_cost.bytes.empty() || inputs.incumbent_c12.bytes.empty()))
+      throw PredicateError("missing incumbent values");
+    authorizeAndConsume(context,PredicateType::accept_candidate);
+    return fused->fusedAcceptCandidate(context,inputs);
+  }
   const auto zero = ops_.encryptConstant(0);
   std::vector<std::pair<Ciphertext, Ciphertext>> comparisons{
       {zero, inputs.linear}, {inputs.c3, zero}};
@@ -93,15 +109,16 @@ bool PredicateEngine::acceptCandidate(const PredicateContext& context,
     const auto feasible = ops_.bitAnd(linear_ge, compared[1]);
     return evaluateFinalBit(context, PredicateType::accept_candidate, feasible);
   }
-  // Both products are in the same dependency layer.  Their inputs are only
-  // comparison results, so scheduling them together is non-speculative.
-  auto first_products=ops_.bitAndBatch({{linear_ge,compared[1]},
-                                       {compared[2],compared[3]}});
-  auto feasible=std::move(first_products[0]);
-  auto cost_neq=ops_.bitOrFromProduct(compared[2],compared[3],first_products[1]);
+  // cost_lt and cost_gt are mutually exclusive outputs of strict comparisons
+  // over the same pair, so OR is addition and equality is its complement.
+  // Likewise cost_lt and (cost_eq AND c12_lt) are mutually exclusive.  These
+  // identities remove the two SMULs formerly used for those OR gates without
+  // changing the Boolean circuit or its final-only reveal boundary.
+  const auto feasible=ops_.bitAnd(linear_ge,compared[1]);
+  const auto cost_neq=ops_.bitOrExclusive(compared[2],compared[3]);
   auto cost_eq=ops_.bitNot(cost_neq);
   const auto equal_and_c12=ops_.bitAnd(cost_eq,compared[4]);
-  const auto better=ops_.bitOr(compared[2],equal_and_c12);
+  const auto better=ops_.bitOrExclusive(compared[2],equal_and_c12);
   const auto final_bit=ops_.bitAnd(feasible,better);
   return evaluateFinalBit(context, PredicateType::accept_candidate, final_bit);
 }
@@ -109,20 +126,22 @@ bool PredicateEngine::acceptCandidate(const PredicateContext& context,
 bool PredicateEngine::evaluateFinalBit(const PredicateContext& context,
                                        PredicateType expected_type,
                                        const EncryptedBit& final_bit) {
-  validate(context);
-  if (context.predicate_type != expected_type)
-    throw PredicateError("predicate context type does not match operation");
-  if (!authorizer_.authorize(context))
-    throw PredicateError("predicate evaluation denied");
+  authorizeAndConsume(context,expected_type);
+  return resolver_.revealFinalBit(context, final_bit);
+}
 
-  // Consume before resolution. A failed/ambiguous reveal must not be retried
-  // under the same operation identity.
+void PredicateEngine::authorizeAndConsume(const PredicateContext& context,
+                                          PredicateType expected_type) {
+  validate(context);
+  if(context.predicate_type!=expected_type)
+    throw PredicateError("predicate context type does not match operation");
+  if(!authorizer_.authorize(context))
+    throw PredicateError("predicate evaluation denied");
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!consumed_operations_.insert(replayKey(context)).second)
       throw PredicateError("predicate operation replayed");
   }
-  return resolver_.revealFinalBit(context, final_bit);
 }
 
 }  // namespace soci::secure

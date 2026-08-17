@@ -34,6 +34,9 @@ struct ProtocolMetrics {
   std::uint64_t smul_logical_items{};
   std::uint64_t smul_dispatches{};
   std::uint64_t predicate_reveals{};
+  std::uint64_t secure_bit_and_items{};
+  std::uint64_t predicate_csp_encryptions{};
+  std::uint64_t predicate_final_threshold_decrypts{};
 };
 
 class ThresholdProtocolClient {
@@ -60,6 +63,9 @@ class ThresholdProtocolClient {
   std::vector<mpz_class> greaterThanBatch(
       const std::vector<std::pair<mpz_class, mpz_class>>& items,
       ProtocolMetrics* metrics = nullptr);
+  bool fusedPredicate(const secure::PredicateContext& context,
+                      const std::vector<std::pair<mpz_class,mpz_class>>& comparisons,
+                      bool has_incumbent);
 
   // Management/benchmark API only; it is deliberately absent from SecureOps.
   mpz_class decryptForTesting(const mpz_class& ciphertext,
@@ -79,7 +85,8 @@ class ThresholdProtocolClient {
   friend class ThresholdPredicateBitResolver;
 };
 
-class ThresholdSecureOps final : public secure::SecureOps {
+class ThresholdSecureOps final : public secure::SecureOps,
+                                 public secure::FusedPredicateBackend {
  public:
   ThresholdSecureOps(ThresholdProtocolClient& protocol,
                      secure::NumericDomain domain);
@@ -97,6 +104,11 @@ class ThresholdSecureOps final : public secure::SecureOps {
                                    const secure::Ciphertext& b) override;
   std::vector<secure::EncryptedBit> greaterThanBatch(
       const std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>>& items) override;
+  bool fusedPruneNode(const secure::PredicateContext& context,
+                      const secure::PruneInputs& inputs) override;
+  bool fusedAcceptCandidate(const secure::PredicateContext& context,
+                            const secure::AcceptInputs& inputs) override;
+  bool predicateFusionEnabled() const noexcept override;
   const secure::NumericDomain& domain() const noexcept override {
     return domain_;
   }

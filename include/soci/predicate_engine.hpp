@@ -78,6 +78,18 @@ class PredicateError : public Error {
   using Error::Error;
 };
 
+// Predicate-only backend.  Implementations return only the final decision and
+// must keep comparison results and Boolean-circuit wires secret-shared.
+class FusedPredicateBackend {
+ public:
+  virtual ~FusedPredicateBackend() = default;
+  virtual bool predicateFusionEnabled() const noexcept = 0;
+  virtual bool fusedPruneNode(const PredicateContext& context,
+                              const PruneInputs& inputs) = 0;
+  virtual bool fusedAcceptCandidate(const PredicateContext& context,
+                                    const AcceptInputs& inputs) = 0;
+};
+
 class PredicateEngine final {
  public:
   // One engine represents one optimization session. Destroy it after solve so
@@ -95,6 +107,8 @@ class PredicateEngine final {
   bool evaluateFinalBit(const PredicateContext& context,
                         PredicateType expected_type,
                         const EncryptedBit& final_bit);
+  void authorizeAndConsume(const PredicateContext& context,
+                           PredicateType expected_type);
   static void validate(const PredicateContext& context);
   static std::string replayKey(const PredicateContext& context);
 

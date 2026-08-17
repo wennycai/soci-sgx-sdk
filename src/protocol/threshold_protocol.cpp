@@ -14,11 +14,17 @@
 #include <iostream>
 #include <mutex>
 #include <netinet/in.h>
+#include <optional>
+#include <openssl/bn.h>
+#include <openssl/rand.h>
+#include <openssl/rsa.h>
+#include <openssl/sha.h>
 #include <sgx_urts.h>
 #include <stdexcept>
 #include <sys/socket.h>
 #include <sys/random.h>
 #include <thread>
+#include <unordered_set>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -27,6 +33,85 @@ namespace soci::protocol {
 namespace {
 using Clock = std::chrono::steady_clock;
 using wire::Bytes;
+mpz_class randomBits(unsigned bits);
+
+struct BooleanGate { std::uint32_t left, right, output; };
+struct BooleanCircuit {
+  std::uint32_t input_count{};
+  std::vector<BooleanGate> and_gates;
+  // Each wire is represented as an XOR of source wires plus a public constant.
+  struct LinearWire { std::vector<std::uint32_t> terms; bool constant{}; };
+  std::vector<LinearWire> wires;
+  std::uint32_t output{};
+};
+
+BooleanCircuit predicateCircuit(secure::PredicateType type,
+                                std::uint32_t comparisons,
+                                bool has_incumbent) {
+  BooleanCircuit c; c.input_count=comparisons;c.wires.reserve(comparisons+comparisons);
+  for(std::uint32_t i=0;i<comparisons;++i)c.wires.push_back({{i},false});
+  const auto linear=[&](std::vector<std::uint32_t> terms,bool constant=false){
+    c.wires.push_back({std::move(terms),constant});return static_cast<std::uint32_t>(c.wires.size()-1);};
+  const auto land=[&](std::uint32_t a,std::uint32_t b){
+    const auto out=linear({});c.and_gates.push_back({a,b,out});return out;};
+  if(type==secure::PredicateType::prune_node){
+    if(!has_incumbent){c.output=0;return c;}
+    if(comparisons<2)throw std::invalid_argument("bad fused PRUNE comparison count");
+    std::uint32_t folded=1;
+    for(std::uint32_t i=2;i<comparisons;++i){const auto p=land(folded,i);folded=linear({folded,i,p});}
+    const auto p=land(0,folded);c.output=linear({0,folded,p});return c;
+  }
+  if(type!=secure::PredicateType::accept_candidate||
+     comparisons!=(has_incumbent?5u:2u))
+    throw std::invalid_argument("bad fused ACCEPT comparison count");
+  const auto linear_ge=linear({0},true);
+  const auto feasible=land(linear_ge,1);
+  if(!has_incumbent){c.output=feasible;return c;}
+  const auto cost_eq=linear({2,3},true);
+  const auto equal_c12=land(cost_eq,4);
+  const auto better=linear({2,equal_c12});
+  c.output=land(feasible,better);return c;
+}
+
+using Label=std::array<std::uint8_t,32>;
+Label randomLabel(){Label x;if(RAND_bytes(x.data(),x.size())!=1)throw std::runtime_error("predicate RNG failed");return x;}
+Label labelXor(const Label&a,const Label&b){Label x;for(std::size_t i=0;i<x.size();++i)x[i]=a[i]^b[i];return x;}
+Label gatePad(const Label&a,const Label&b,std::uint32_t gate){
+  SHA256_CTX s;Label out;SHA256_Init(&s);SHA256_Update(&s,a.data(),a.size());
+  SHA256_Update(&s,b.data(),b.size());std::uint8_t id[4];wire::writeU32(id,gate);
+  SHA256_Update(&s,id,sizeof(id));SHA256_Final(out.data(),&s);return out;
+}
+void appendLabel(Bytes&out,const Label&x){out.insert(out.end(),x.begin(),x.end());}
+Label takeLabel(const Bytes&in,std::size_t&off){if(in.size()-off<32)throw std::runtime_error("short predicate label");Label x;std::copy_n(in.data()+off,32,x.data());off+=32;return x;}
+
+struct GarbledPredicate {
+  BooleanCircuit circuit;
+  Label delta;
+  std::vector<Label> zero;
+  std::vector<std::array<Label,4>> tables;
+};
+GarbledPredicate garblePredicate(secure::PredicateType type,std::uint32_t count,
+                                 bool has_incumbent){
+  GarbledPredicate g;g.circuit=predicateCircuit(type,count,has_incumbent);
+  g.delta=randomLabel();g.delta.back()|=1;g.zero.resize(g.circuit.wires.size());
+  for(std::uint32_t i=0;i<count;++i)g.zero[i]=randomLabel();
+  std::size_t gi=0;
+  for(std::uint32_t w=count;w<g.circuit.wires.size();++w){
+    const auto&lin=g.circuit.wires[w];
+    if(!lin.terms.empty()){Label z{};for(auto t:lin.terms)z=labelXor(z,g.zero[t]);if(lin.constant)z=labelXor(z,g.delta);g.zero[w]=z;continue;}
+    const auto&gate=g.circuit.and_gates.at(gi);g.zero[w]=randomLabel();std::array<Label,4> table;
+    for(unsigned a=0;a<2;++a)for(unsigned b=0;b<2;++b){auto la=a?labelXor(g.zero[gate.left],g.delta):g.zero[gate.left];auto lb=b?labelXor(g.zero[gate.right],g.delta):g.zero[gate.right];auto pad=gatePad(la,lb,static_cast<std::uint32_t>(gi));auto target=(a&b)?labelXor(g.zero[w],g.delta):g.zero[w];table[((la.back()&1)<<1)|(lb.back()&1)]=labelXor(pad,target);}
+    g.tables.push_back(table);++gi;
+  }return g;
+}
+Label otPad(const mpz_class&key,std::uint32_t index){
+  const auto n=(mpz_sizeinbase(key.get_mpz_t(),2)+7)/8;Bytes bytes(n? n:1);std::size_t wrote=0;
+  mpz_export(bytes.data(),&wrote,1,1,1,0,key.get_mpz_t());SHA256_CTX s;Label out;
+  SHA256_Init(&s);SHA256_Update(&s,bytes.data(),bytes.size());std::uint8_t id[4];wire::writeU32(id,index);
+  SHA256_Update(&s,id,4);SHA256_Final(out.data(),&s);std::fill(bytes.begin(),bytes.end(),0);return out;
+}
+mpz_class randomBelowNonzero(const mpz_class&limit){mpz_class x;do{x=randomBits(static_cast<unsigned>(mpz_sizeinbase(limit.get_mpz_t(),2)));x%=limit;}while(x==0);return x;}
+mpz_class bnToMpz(const BIGNUM*bn){const auto size=BN_num_bytes(bn);Bytes b(size);BN_bn2bin(bn,b.data());mpz_class z;mpz_import(z.get_mpz_t(),b.size(),1,1,1,0,b.data());return z;}
 
 std::uint8_t modeByte(ThresholdMode mode) {
   return static_cast<std::uint8_t>(mode);
@@ -349,6 +434,14 @@ class ThresholdProtocolClient::Impl {
       initializeEnclave(enclave, 1, mode);
       loadShare(enclave, key_directory + "/cp.sealed");
       socket = wire::connectTcp(csp_host, csp_port);
+      RSA* rsa=RSA_new();BIGNUM* exponent=BN_new();
+      if(!rsa||!exponent||!BN_set_word(exponent,RSA_F4)||
+         RSA_generate_key_ex(rsa,2048,exponent,nullptr)!=1){
+        RSA_free(rsa);BN_free(exponent);throw std::runtime_error("predicate OT keygen failed");
+      }
+      const BIGNUM *n,*e,*d;RSA_get0_key(rsa,&n,&e,&d);
+      ot_modulus=bnToMpz(n);ot_public=bnToMpz(e);ot_private=bnToMpz(d);
+      RSA_free(rsa);BN_free(exponent);
     } catch (...) {
       if (socket >= 0) close(socket);
       sgx_destroy_enclave(enclave);
@@ -391,6 +484,7 @@ class ThresholdProtocolClient::Impl {
   sgx_enclave_id_t enclave{};
   mpz_class modulus;
   mpz_class modulus_squared;
+  mpz_class ot_modulus,ot_public,ot_private;
   const std::size_t encryption_threads{encryptionThreadCount()};
   int socket{-1};
   ProtocolMetrics metrics;
@@ -560,6 +654,32 @@ std::vector<mpz_class> ThresholdProtocolClient::greaterThanBatch(
   ++measured->csp_requests;return output;
 }
 
+bool ThresholdProtocolClient::fusedPredicate(
+    const secure::PredicateContext& context,
+    const std::vector<std::pair<mpz_class,mpz_class>>& items,
+    bool has_incumbent) {
+  if(items.empty()||items.size()>SOCI_THRESHOLD_MAX_BATCH_SIZE)
+    throw secure::PredicateError("invalid fused predicate batch size");
+  try {
+    std::vector<bool> orientation;std::vector<mpz_class> differences;
+    std::vector<mpz_class> masks;orientation.reserve(items.size());masks.reserve(items.size());
+    std::vector<mpz_class> r3s; r3s.reserve(items.size());
+    for(const auto& item:items){(void)item;auto r3=impl_->randomMask();mpz_class r;do r=impl_->randomMask();while(r>=r3);bool o=randomBits(1)!=0;orientation.push_back(o);r3s.push_back(r3);mpz_class mask=o?mpz_class(impl_->modulus/2-r):mpz_class(r3+impl_->modulus/2-r);masks.push_back(std::move(mask));}
+    const auto encrypted_masks=impl_->encryptBatch(masks);
+    for(std::size_t i=0;i<items.size();++i){const auto&left=items[i].second;const auto&right=items[i].first;auto d=!orientation[i]?add(left,scalarMultiply(right,impl_->modulus-1)):add(right,scalarMultiply(left,-1));d=add(scalarMultiply(d,r3s[i]),encrypted_masks[i]);if(d<=0||d>=impl_->modulus_squared||gcd(d,impl_->modulus)!=1)throw std::runtime_error("invalid fused SCMP ciphertext");differences.push_back(std::move(d));}
+    auto shares=partialDecryptBatch(impl_->enclave,differences,impl_->mode,&impl_->metrics.cp_enclave_microseconds);
+    const auto& n=impl_->ot_modulus;const auto& pub=impl_->ot_public;const auto& priv=impl_->ot_private;
+    std::vector<mpz_class>x0,x1;x0.reserve(items.size());x1.reserve(items.size());
+    Bytes request{'F',static_cast<std::uint8_t>(context.predicate_type),static_cast<std::uint8_t>(has_incumbent),0,0,0,0,0};wire::writeU32(request.data()+4,context.depth);appendContextString(request,context.session_id);appendContextString(request,context.operation_id);appendContextString(request,context.node_id);const auto co=request.size();request.resize(co+4);wire::writeU32(request.data()+co,items.size());wire::appendInteger(request,n);wire::appendInteger(request,pub);
+    for(std::size_t i=0;i<items.size();++i){x0.push_back(randomBelowNonzero(n));x1.push_back(randomBelowNonzero(n));wire::appendInteger(request,differences[i]);wire::appendInteger(request,shares[i]);wire::appendInteger(request,x0[i]);wire::appendInteger(request,x1[i]);}
+    auto reply=wire::requestPayload(impl_->socket,std::move(request),&impl_->metrics.network_microseconds);if(reply.size()<4||wire::readU32(reply.data())!=items.size())throw std::runtime_error("bad fused predicate OT response");std::size_t off=4;std::vector<mpz_class>v;for(std::size_t i=0;i<items.size();++i)v.push_back(wire::takeInteger(reply,off));if(off!=reply.size())throw std::runtime_error("trailing fused OT response");
+    auto garbled=garblePredicate(context.predicate_type,items.size(),has_incumbent);Bytes finish{'G',1,0,0};appendContextString(finish,context.session_id);appendContextString(finish,context.operation_id);appendContextString(finish,context.node_id);const auto go=finish.size();finish.resize(go+8);wire::writeU32(finish.data()+go,items.size());wire::writeU32(finish.data()+go+4,garbled.tables.size());
+    for(std::size_t i=0;i<items.size();++i){mpz_class k0,k1,b0=(v[i]-x0[i])%n,b1=(v[i]-x1[i])%n;if(b0<0)b0+=n;if(b1<0)b1+=n;mpz_powm(k0.get_mpz_t(),b0.get_mpz_t(),priv.get_mpz_t(),n.get_mpz_t());mpz_powm(k1.get_mpz_t(),b1.get_mpz_t(),priv.get_mpz_t(),n.get_mpz_t());auto l0=orientation[i]?labelXor(garbled.zero[i],garbled.delta):garbled.zero[i];auto l1=orientation[i]?garbled.zero[i]:labelXor(garbled.zero[i],garbled.delta);appendLabel(finish,labelXor(l0,otPad(k0,i)));appendLabel(finish,labelXor(l1,otPad(k1,i)));}
+    for(const auto&t:garbled.tables)for(const auto&row:t)appendLabel(finish,row);appendLabel(finish,garbled.zero[garbled.circuit.output]);appendLabel(finish,labelXor(garbled.zero[garbled.circuit.output],garbled.delta));
+    auto decision=wire::requestPayload(impl_->socket,std::move(finish),&impl_->metrics.network_microseconds);if(decision.size()!=1||decision[0]>1)throw std::runtime_error("bad fused predicate decision");auto&m=impl_->metrics;m.logical_items+=items.size();m.scmp_logical_items+=items.size();++m.scmp_dispatches;++m.cp_ecalls;m.csp_ecalls+=1;m.csp_requests+=2;++m.predicate_reveals;m.secure_bit_and_items+=garbled.tables.size();return decision[0]!=0;
+  } catch(const std::exception&){throw secure::PredicateError("fused predicate protocol failed");}
+}
+
 mpz_class ThresholdProtocolClient::decryptForTesting(
     const mpz_class& ciphertext, ProtocolMetrics* metrics) {
   double* cp = metrics ? &metrics->cp_enclave_microseconds : nullptr;
@@ -710,6 +830,26 @@ secure::EncryptedBit ThresholdSecureOps::greaterThan(
 
 std::vector<secure::EncryptedBit> ThresholdSecureOps::greaterThanBatch(const std::vector<std::pair<secure::Ciphertext,secure::Ciphertext>>& items){std::vector<std::pair<mpz_class,mpz_class>> native;native.reserve(items.size());for(const auto& item:items)native.emplace_back(encodeCiphertext(item.first,protocol_.mode()),encodeCiphertext(item.second,protocol_.mode()));auto values=protocol_.greaterThanBatch(native);std::vector<secure::EncryptedBit> output;output.reserve(values.size());for(const auto& value:values)output.push_back(encryptedBit(decodeCiphertext(value,protocol_.mode())));return output;}
 
+bool ThresholdSecureOps::fusedPruneNode(const secure::PredicateContext& context,
+                                        const secure::PruneInputs& inputs){
+  std::vector<std::pair<mpz_class,mpz_class>> comparisons;
+  const auto zero=protocol_.encrypt(0);comparisons.emplace_back(zero,encodeCiphertext(inputs.linear_upper,protocol_.mode()));
+  if(inputs.has_incumbent)for(const auto&lower:inputs.cost_lowers)comparisons.emplace_back(encodeCiphertext(lower,protocol_.mode()),encodeCiphertext(inputs.incumbent_cost,protocol_.mode()));
+  return protocol_.fusedPredicate(context,comparisons,inputs.has_incumbent);
+}
+
+bool ThresholdSecureOps::predicateFusionEnabled() const noexcept {
+  const char* value=std::getenv("SOCI_PREDICATE_FUSION");
+  return !value||std::strcmp(value,"0")!=0;
+}
+
+bool ThresholdSecureOps::fusedAcceptCandidate(const secure::PredicateContext& context,
+                                              const secure::AcceptInputs& inputs){
+  const auto zero=protocol_.encrypt(0);std::vector<std::pair<mpz_class,mpz_class>> comparisons{{zero,encodeCiphertext(inputs.linear,protocol_.mode())},{encodeCiphertext(inputs.c3,protocol_.mode()),zero}};
+  if(inputs.has_incumbent){comparisons.emplace_back(encodeCiphertext(inputs.incumbent_cost,protocol_.mode()),encodeCiphertext(inputs.cost,protocol_.mode()));comparisons.emplace_back(encodeCiphertext(inputs.cost,protocol_.mode()),encodeCiphertext(inputs.incumbent_cost,protocol_.mode()));comparisons.emplace_back(encodeCiphertext(inputs.incumbent_c12,protocol_.mode()),encodeCiphertext(inputs.c12,protocol_.mode()));}
+  return protocol_.fusedPredicate(context,comparisons,inputs.has_incumbent);
+}
+
 bool ThresholdPredicateBitResolver::revealFinalBit(
     const secure::PredicateContext& context,
     const secure::EncryptedBit& bit) {
@@ -791,6 +931,8 @@ int runThresholdCsp(const std::string& enclave_path,
     std::uint64_t parse_serialize_ns{};
     std::uint64_t socket_send_ns{};
   } timings;
+  struct PendingFused {std::string session,operation,node;secure::PredicateType type{};bool incumbent{};std::uint32_t depth{};std::vector<bool> choices;std::vector<mpz_class> keys;BooleanCircuit circuit;};
+  std::optional<PendingFused> pending_fused;std::unordered_set<std::string> fused_replays;
   const auto elapsedNs=[](Clock::time_point start) {
     return static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -807,6 +949,13 @@ int runThresholdCsp(const std::string& enclave_path,
         const auto request_start=Clock::now();
         if (request.empty()) throw std::runtime_error("empty request");
         const char operation = request.front();
+        if(operation=='F'){
+          if(pending_fused||request.size()<8||request[1]<1||request[1]>2||request[2]>1||request[3]!=0)throw std::runtime_error("invalid fused predicate start");
+          std::size_t o=8;PendingFused p;p.type=static_cast<secure::PredicateType>(request[1]);p.incumbent=request[2]!=0;p.session=takeContextString(request,o);p.operation=takeContextString(request,o);p.node=takeContextString(request,o);if(request.size()-o<4)throw std::runtime_error("short fused predicate start");auto count=wire::readU32(request.data()+o);o+=4;if(!count||count>SOCI_THRESHOLD_MAX_BATCH_SIZE)throw std::runtime_error("bad fused comparison count");auto rsa_n=wire::takeInteger(request,o),rsa_e=wire::takeInteger(request,o);if(rsa_n<3||rsa_e<3)throw std::runtime_error("bad fused OT key");std::vector<mpz_class>ciphertexts,cp_shares,x0,x1;for(std::uint32_t i=0;i<count;++i){ciphertexts.push_back(wire::takeInteger(request,o));cp_shares.push_back(wire::takeInteger(request,o));x0.push_back(wire::takeInteger(request,o));x1.push_back(wire::takeInteger(request,o));if(x0.back()<=0||x0.back()>=rsa_n||x1.back()<=0||x1.back()>=rsa_n)throw std::runtime_error("bad fused OT nonce");}if(o!=request.size())throw std::runtime_error("trailing fused start");const auto replay=p.session+'\0'+p.operation;if(!fused_replays.insert(replay).second)throw std::runtime_error("fused predicate replay");p.circuit=predicateCircuit(p.type,count,p.incumbent);auto plain=thresholdDecryptBatch(enclave,ciphertexts,cp_shares,mode);Bytes response{0,0,0,0,0};wire::writeU32(response.data()+1,count);for(std::uint32_t i=0;i<count;++i){const bool choice=plain[i]<=modulus/2;p.choices.push_back(choice);auto k=randomBelowNonzero(rsa_n);p.keys.push_back(k);mpz_class ke;mpz_powm(ke.get_mpz_t(),k.get_mpz_t(),rsa_e.get_mpz_t(),rsa_n.get_mpz_t());mpz_class v=(choice?x1[i]:x0[i])+ke;v%=rsa_n;wire::appendInteger(response,v);}pending_fused=std::move(p);wire::sendFrame(socket,response);continue;
+        }
+        if(operation=='G'){
+          if(!pending_fused||request.size()<4||request[1]!=1||request[2]!=0||request[3]!=0)throw std::runtime_error("invalid fused predicate finish");auto p=std::move(*pending_fused);pending_fused.reset();std::size_t o=4;auto session=takeContextString(request,o),op=takeContextString(request,o),node=takeContextString(request,o);if(session!=p.session||op!=p.operation||node!=p.node||request.size()-o<8)throw std::runtime_error("fused context mismatch");auto count=wire::readU32(request.data()+o),gates=wire::readU32(request.data()+o+4);o+=8;if(count!=p.choices.size()||gates!=p.circuit.and_gates.size())throw std::runtime_error("fused circuit shape mismatch");std::vector<Label>labels(p.circuit.wires.size());for(std::uint32_t i=0;i<count;++i){auto m0=takeLabel(request,o),m1=takeLabel(request,o);labels[i]=labelXor(p.choices[i]?m1:m0,otPad(p.keys[i],i));}std::vector<std::array<Label,4>>tables(gates);for(auto&t:tables)for(auto&row:t)row=takeLabel(request,o);auto out0=takeLabel(request,o),out1=takeLabel(request,o);if(o!=request.size())throw std::runtime_error("trailing fused finish");std::size_t gi=0;for(std::uint32_t w=count;w<labels.size();++w){const auto&lin=p.circuit.wires[w];if(!lin.terms.empty()){Label z{};for(auto t:lin.terms)z=labelXor(z,labels.at(t));labels[w]=z;}else{const auto&gate=p.circuit.and_gates.at(gi);auto pad=gatePad(labels.at(gate.left),labels.at(gate.right),gi);auto row=((labels[gate.left].back()&1)<<1)|(labels[gate.right].back()&1);labels[w]=labelXor(pad,tables[gi][row]);++gi;}}Bytes response{0};if(labels[p.circuit.output]==out0)response.push_back(0);else if(labels[p.circuit.output]==out1)response.push_back(1);else throw std::runtime_error("invalid fused output label");wire::sendFrame(socket,response);continue;
+        }
         if(operation=='T') {
           if(request.size()!=1) throw std::runtime_error("invalid timing request");
           Bytes reply{0,'C','S','T','M',1,0,0,0};
@@ -941,6 +1090,10 @@ int runThresholdCsp(const std::string& enclave_path,
         wire::sendFrame(socket, reply);
       }
     } catch (const std::exception& error) {
+      // A broken/ambiguous transcript is never resumable.  The replay entry
+      // inserted at F-start remains consumed, while all secret transient state
+      // is discarded before accepting another connection.
+      pending_fused.reset();
       std::cerr << "CSP request rejected: " << error.what() << '\n';
       close(socket);
     }

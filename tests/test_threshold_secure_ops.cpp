@@ -165,25 +165,40 @@ int main(int argc, char** argv) {
             "equal-cost better-c12 candidate rejected");
     const auto predicate_metrics_after = protocol.metrics();
     require(predicate_metrics_after.logical_items -
-                predicate_metrics_before.logical_items == 14,
+                predicate_metrics_before.logical_items == 8,
             "predicate batching changed SCMP/SMUL logical call count");
     require(predicate_metrics_after.cp_ecalls -
-                predicate_metrics_before.cp_ecalls == 11 &&
+                predicate_metrics_before.cp_ecalls == 3 &&
                 predicate_metrics_after.csp_requests -
-                predicate_metrics_before.csp_requests == 11 &&
+                predicate_metrics_before.csp_requests == 6 &&
                 predicate_metrics_after.csp_ecalls -
-                predicate_metrics_before.csp_ecalls == 14 &&
+                predicate_metrics_before.csp_ecalls == 3 &&
                 predicate_metrics_after.scmp_logical_items -
                 predicate_metrics_before.scmp_logical_items == 8 &&
                 predicate_metrics_after.scmp_dispatches -
                 predicate_metrics_before.scmp_dispatches == 3 &&
                 predicate_metrics_after.smul_logical_items -
-                predicate_metrics_before.smul_logical_items == 6 &&
+                predicate_metrics_before.smul_logical_items == 0 &&
                 predicate_metrics_after.smul_dispatches -
-                predicate_metrics_before.smul_dispatches == 5 &&
+                predicate_metrics_before.smul_dispatches == 0 &&
+                predicate_metrics_after.secure_bit_and_items-
+                predicate_metrics_before.secure_bit_and_items == 4 &&
                 predicate_metrics_after.predicate_reveals -
                 predicate_metrics_before.predicate_reveals == 3,
             "predicate batching did not reduce ECALL/request dispatches");
+    stage = "fused predicate replay";
+    ++predicate_sequence;
+    const auto fused_replay =
+        predicateContext(soci::secure::PredicateType::prune_node);
+    require(predicate_engine.pruneNode(
+                fused_replay,{number(-1),number(0),false,{}}),
+            "initial fused replay predicate failed");
+    rejected=false;
+    try {
+      (void)predicate_engine.pruneNode(
+          fused_replay,{number(-1),number(0),false,{}});
+    } catch(const soci::secure::PredicateError&) { rejected=true; }
+    require(rejected,"fused predicate replay was accepted");
     stage = "K=16 prune batch";
     std::vector<soci::secure::Ciphertext> k16_bounds;
     for(std::size_t i=0;i<16;++i)k16_bounds.push_back(number(9));

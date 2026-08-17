@@ -41,6 +41,9 @@ struct EncryptedOptimizationStats {
   std::uint64_t csp_ecalls{};
   std::uint64_t csp_requests{};
   std::uint64_t predicate_reveals{};
+  std::uint64_t secure_bit_and_items{};
+  std::uint64_t predicate_csp_encryptions{};
+  std::uint64_t predicate_final_threshold_decrypts{};
   double cp_enclave_seconds{};
   double network_seconds{};
   double host_encrypt_seconds{};

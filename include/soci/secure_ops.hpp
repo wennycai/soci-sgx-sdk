@@ -69,6 +69,10 @@ class SecureOps {
       const std::vector<std::pair<EncryptedBit, EncryptedBit>>& items);
   EncryptedBit bitOrFromProduct(const EncryptedBit& a, const EncryptedBit& b,
                                 const EncryptedBit& product);
+  // Adds bits whose conjunction is known by the caller to be zero.  This is
+  // intentionally distinct from bitOr: misuse on non-exclusive inputs would
+  // not produce a bit.
+  EncryptedBit bitOrExclusive(const EncryptedBit& a, const EncryptedBit& b);
   Ciphertext select(const EncryptedBit& condition,
                     const Ciphertext& true_value,
                     const Ciphertext& false_value);

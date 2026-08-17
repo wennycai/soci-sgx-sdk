@@ -9,6 +9,8 @@ public final class ConfidentialOptimizationResult {
   public final long prunePredicates, acceptPredicates;
   public final long scmpLogicalItems, scmpDispatches, smulLogicalItems,
       smulDispatches, cpEcalls, cspEcalls, cspRequests, predicateReveals;
+  public final long secureBitAndItems, predicateCspEncryptions,
+      predicateFinalThresholdDecrypts;
   public final double preprocessingSeconds, searchSeconds, totalSeconds;
   public final double hostEncryptSeconds, hostScalarPowmSeconds,
       cpEnclaveSeconds, cspEnclaveSeconds, networkSeconds;
@@ -22,6 +24,8 @@ public final class ConfidentialOptimizationResult {
       long scmpLogicalItems, long scmpDispatches, long smulLogicalItems,
       long smulDispatches, long cpEcalls, long cspEcalls, long cspRequests,
       long predicateReveals,
+      long secureBitAndItems,long predicateCspEncryptions,
+      long predicateFinalThresholdDecrypts,
       long hostEncryptCalls,long hostScalarPowmCalls,
       double hostEncryptSeconds,double hostScalarPowmSeconds,
       double cpEnclaveSeconds,double cspEnclaveSeconds,double networkSeconds,
@@ -38,6 +42,9 @@ public final class ConfidentialOptimizationResult {
     this.smulLogicalItems=smulLogicalItems;this.smulDispatches=smulDispatches;
     this.cpEcalls=cpEcalls;this.cspEcalls=cspEcalls;
     this.cspRequests=cspRequests;this.predicateReveals=predicateReveals;
+    this.secureBitAndItems=secureBitAndItems;
+    this.predicateCspEncryptions=predicateCspEncryptions;
+    this.predicateFinalThresholdDecrypts=predicateFinalThresholdDecrypts;
     this.hostEncryptCalls=hostEncryptCalls;
     this.hostScalarPowmCalls=hostScalarPowmCalls;
     this.hostEncryptSeconds=hostEncryptSeconds;

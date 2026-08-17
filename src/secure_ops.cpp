@@ -92,6 +92,11 @@ EncryptedBit SecureOps::bitOrFromProduct(const EncryptedBit& a,
                           product.ciphertext()));
 }
 
+EncryptedBit SecureOps::bitOrExclusive(const EncryptedBit& a,
+                                       const EncryptedBit& b) {
+  return encryptedBit(add(a.ciphertext(), b.ciphertext()));
+}
+
 Ciphertext SecureOps::select(const EncryptedBit& condition,
                              const Ciphertext& true_value,
                              const Ciphertext& false_value) {
