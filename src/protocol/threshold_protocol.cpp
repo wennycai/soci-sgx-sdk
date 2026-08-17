@@ -81,7 +81,8 @@ mpz_class partialDecrypt(sgx_enclave_id_t enclave,
 std::vector<mpz_class> partialDecryptBatch(
     sgx_enclave_id_t enclave, const std::vector<mpz_class>& ciphertexts,
     ThresholdMode mode, double* microseconds = nullptr) {
-  if (ciphertexts.empty() || ciphertexts.size() > 16)
+  if (ciphertexts.empty() ||
+      ciphertexts.size() > SOCI_THRESHOLD_MAX_BATCH_SIZE)
     throw std::invalid_argument("invalid partial decrypt batch size");
   Bytes request{'S','P','D','B',1,modeByte(mode),0,0,0,0,0,0};
   wire::writeU32(request.data()+8, static_cast<std::uint32_t>(ciphertexts.size()));
@@ -97,6 +98,38 @@ std::vector<mpz_class> partialDecryptBatch(
   std::size_t offset=12;std::vector<mpz_class> output;output.reserve(ciphertexts.size());
   for(std::size_t i=0;i<ciphertexts.size();++i) output.push_back(wire::takeInteger(response,offset));
   if(offset!=response.size()) throw std::runtime_error("trailing partial decrypt batch data");
+  return output;
+}
+
+std::vector<mpz_class> thresholdDecryptBatch(
+    sgx_enclave_id_t enclave, const std::vector<mpz_class>& ciphertexts,
+    const std::vector<mpz_class>& cp_shares, ThresholdMode mode) {
+  if (ciphertexts.empty() || ciphertexts.size() != cp_shares.size() ||
+      ciphertexts.size() > SOCI_THRESHOLD_MAX_BATCH_SIZE)
+    throw std::invalid_argument("invalid threshold decrypt batch size");
+  Bytes request{'S','T','D','B',1,modeByte(mode),0,0,0,0,0,0};
+  wire::writeU32(request.data()+8,
+                 static_cast<std::uint32_t>(ciphertexts.size()));
+  for (std::size_t i=0;i<ciphertexts.size();++i) {
+    wire::appendInteger(request,ciphertexts[i]);
+    wire::appendInteger(request,cp_shares[i]);
+  }
+  Bytes response(512*1024);std::size_t response_size=0;std::uint32_t result=0;
+  const auto status=ecall_threshold_decrypt_batch(
+      enclave,&result,request.data(),request.size(),response.data(),
+      response.size(),&response_size);
+  if(status!=SGX_SUCCESS||result!=0)
+    throw std::runtime_error("threshold decrypt batch failed");
+  response.resize(response_size);
+  if(response.size()<12||std::memcmp(response.data(),"STDR",4)||
+     response[4]!=1||response[5]!=modeByte(mode)||response[6]!=3||
+     response[7]!=0||wire::readU32(response.data()+8)!=ciphertexts.size())
+    throw std::runtime_error("bad threshold decrypt batch response");
+  std::size_t offset=12;std::vector<mpz_class> output;output.reserve(ciphertexts.size());
+  for(std::size_t i=0;i<ciphertexts.size();++i)
+    output.push_back(wire::takeInteger(response,offset));
+  if(offset!=response.size())
+    throw std::runtime_error("trailing threshold decrypt batch data");
   return output;
 }
 
@@ -331,7 +364,9 @@ mpz_class ThresholdProtocolClient::secureMultiply(const mpz_class& a,
       {packed, partialDecrypt(impl_->enclave, packed, impl_->mode, cp),
        packing_base},
       net);
-  ++measured->logical_items; ++measured->cp_ecalls; ++measured->csp_requests;
+  ++measured->logical_items; ++measured->smul_logical_items;
+  ++measured->smul_dispatches; ++measured->cp_ecalls;
+  measured->csp_ecalls+=2; ++measured->csp_requests;
   std::size_t offset = 0;
   auto product = wire::takeInteger(reply, offset);
   product = add(product, scalarMultiply(a, -r2));
@@ -342,7 +377,7 @@ mpz_class ThresholdProtocolClient::secureMultiply(const mpz_class& a,
 std::vector<mpz_class> ThresholdProtocolClient::secureMultiplyBatch(
     const std::vector<std::pair<mpz_class, mpz_class>>& items,
     ProtocolMetrics* metrics) {
-  if (items.empty() || items.size() > 16)
+  if (items.empty() || items.size() > SOCI_THRESHOLD_MAX_BATCH_SIZE)
     throw std::invalid_argument("invalid SMUL batch size");
   const mpz_class packing_base = mpz_class(1) << 130;
   std::vector<mpz_class> r1, r2, packed;
@@ -365,7 +400,9 @@ std::vector<mpz_class> ThresholdProtocolClient::secureMultiplyBatch(
   std::size_t offset=8;std::vector<mpz_class> output;output.reserve(items.size());
   for(std::size_t i=0;i<items.size();++i){auto product=wire::takeInteger(reply,offset);product=add(product,scalarMultiply(items[i].first,-r2[i]));product=add(product,scalarMultiply(items[i].second,-r1[i]));output.push_back(add(product,encrypt(-r1[i]*r2[i])));}
   if(offset!=reply.size()) throw std::runtime_error("trailing SMUL batch response");
-  measured->logical_items+=items.size();++measured->cp_ecalls;++measured->csp_requests;
+  measured->logical_items+=items.size();measured->smul_logical_items+=items.size();
+  ++measured->smul_dispatches;++measured->cp_ecalls;++measured->csp_ecalls;
+  ++measured->csp_requests;
   return output;
 }
 
@@ -401,7 +438,9 @@ mpz_class ThresholdProtocolClient::greaterThan(const mpz_class& a,
       {difference,
        partialDecrypt(impl_->enclave, difference, impl_->mode, cp)},
       net);
-  ++measured->logical_items; ++measured->cp_ecalls; ++measured->csp_requests;
+  ++measured->logical_items; ++measured->scmp_logical_items;
+  ++measured->scmp_dispatches; ++measured->cp_ecalls;
+  measured->csp_ecalls+=2; ++measured->csp_requests;
   std::size_t offset = 0;
   const auto bit = wire::takeInteger(reply, offset);
   return orientation ? add(encrypt(1), scalarMultiply(bit, -1)) : bit;
@@ -410,7 +449,7 @@ mpz_class ThresholdProtocolClient::greaterThan(const mpz_class& a,
 std::vector<mpz_class> ThresholdProtocolClient::greaterThanBatch(
     const std::vector<std::pair<mpz_class, mpz_class>>& items,
     ProtocolMetrics* metrics) {
-  if(items.empty()||items.size()>16) throw std::invalid_argument("invalid SCMP batch size");
+  if(items.empty()||items.size()>SOCI_THRESHOLD_MAX_BATCH_SIZE) throw std::invalid_argument("invalid SCMP batch size");
   std::vector<bool> orientations;std::vector<mpz_class> differences;
   orientations.reserve(items.size());differences.reserve(items.size());
   for(const auto& item:items){const auto& left=item.second;const auto& right=item.first;const auto r3=impl_->randomMask();mpz_class r;do r=impl_->randomMask();while(r>=r3);const mpz_class r4=impl_->modulus/2-r;const bool orientation=randomBits(1)!=0;mpz_class difference;
@@ -424,7 +463,9 @@ std::vector<mpz_class> ThresholdProtocolClient::greaterThanBatch(
   auto reply=wire::requestPayload(impl_->socket,std::move(request),net);
   if(reply.size()<8||reply[0]!=1||reply[1]!=0||reply[2]!=0||reply[3]!=0||wire::readU32(reply.data()+4)!=items.size())throw std::runtime_error("bad SCMP batch response");
   std::size_t offset=8;std::vector<mpz_class> output;output.reserve(items.size());for(std::size_t i=0;i<items.size();++i){const auto bit=wire::takeInteger(reply,offset);output.push_back(orientations[i]?add(encrypt(1),scalarMultiply(bit,-1)):bit);}if(offset!=reply.size())throw std::runtime_error("trailing SCMP batch response");
-  measured->logical_items+=items.size();++measured->cp_ecalls;++measured->csp_requests;return output;
+  measured->logical_items+=items.size();measured->scmp_logical_items+=items.size();
+  ++measured->scmp_dispatches;++measured->cp_ecalls;++measured->csp_ecalls;
+  ++measured->csp_requests;return output;
 }
 
 mpz_class ThresholdProtocolClient::decryptForTesting(
@@ -445,8 +486,9 @@ mpz_class ThresholdProtocolClient::decryptForTesting(
 bool ThresholdProtocolClient::revealFinalPredicate(
     const secure::PredicateContext& context, const mpz_class& encrypted_bit,
     ProtocolMetrics* metrics) {
-  double* cp = metrics ? &metrics->cp_enclave_microseconds : nullptr;
-  double* net = metrics ? &metrics->network_microseconds : nullptr;
+  auto* measured=metrics?metrics:&impl_->metrics;
+  double* cp=&measured->cp_enclave_microseconds;
+  double* net=&measured->network_microseconds;
   try {
     Bytes request{'P', static_cast<std::uint8_t>(context.predicate_type), 0, 0,
                   0,   0, 0, 0};
@@ -460,6 +502,8 @@ bool ThresholdProtocolClient::revealFinalPredicate(
     auto reply = wire::requestPayload(impl_->socket, std::move(request), net);
     if (reply.size() != 1 || reply.front() > 1)
       throw secure::PredicateError("invalid threshold predicate response");
+    ++measured->predicate_reveals;++measured->cp_ecalls;
+    measured->csp_ecalls+=2;++measured->csp_requests;
     return reply.front() == 1;
   } catch (const secure::PredicateError&) {
     throw;
@@ -544,20 +588,20 @@ secure::Ciphertext ThresholdSecureOps::scalarMul(const secure::Ciphertext& a,
 
 secure::Ciphertext ThresholdSecureOps::secureMul(const secure::Ciphertext& a,
                                                  const secure::Ciphertext& b) {
-  return decodeCiphertext(protocol_.secureMultiply(
-                              encodeCiphertext(a, protocol_.mode()),
-                              encodeCiphertext(b, protocol_.mode())),
-                          protocol_.mode());
+  const auto values=protocol_.secureMultiplyBatch({{
+      encodeCiphertext(a,protocol_.mode()),
+      encodeCiphertext(b,protocol_.mode())}});
+  return decodeCiphertext(values.front(),protocol_.mode());
 }
 
 std::vector<secure::Ciphertext> ThresholdSecureOps::secureMulBatch(const std::vector<std::pair<secure::Ciphertext,secure::Ciphertext>>& items){std::vector<std::pair<mpz_class,mpz_class>> native;native.reserve(items.size());for(const auto& item:items)native.emplace_back(encodeCiphertext(item.first,protocol_.mode()),encodeCiphertext(item.second,protocol_.mode()));auto values=protocol_.secureMultiplyBatch(native);std::vector<secure::Ciphertext> output;output.reserve(values.size());for(const auto& value:values)output.push_back(decodeCiphertext(value,protocol_.mode()));return output;}
 
 secure::EncryptedBit ThresholdSecureOps::greaterThan(
     const secure::Ciphertext& a, const secure::Ciphertext& b) {
-  return encryptedBit(decodeCiphertext(
-      protocol_.greaterThan(encodeCiphertext(a, protocol_.mode()),
-                            encodeCiphertext(b, protocol_.mode())),
-      protocol_.mode()));
+  const auto values=protocol_.greaterThanBatch({{
+      encodeCiphertext(a,protocol_.mode()),
+      encodeCiphertext(b,protocol_.mode())}});
+  return encryptedBit(decodeCiphertext(values.front(),protocol_.mode()));
 }
 
 std::vector<secure::EncryptedBit> ThresholdSecureOps::greaterThanBatch(const std::vector<std::pair<secure::Ciphertext,secure::Ciphertext>>& items){std::vector<std::pair<mpz_class,mpz_class>> native;native.reserve(items.size());for(const auto& item:items)native.emplace_back(encodeCiphertext(item.first,protocol_.mode()),encodeCiphertext(item.second,protocol_.mode()));auto values=protocol_.greaterThanBatch(native);std::vector<secure::EncryptedBit> output;output.reserve(values.size());for(const auto& value:values)output.push_back(encryptedBit(decodeCiphertext(value,protocol_.mode())));return output;}
@@ -660,7 +704,8 @@ int runThresholdCsp(const std::string& enclave_path,
               request[2] != 1 || request[3] != 0)
             throw std::runtime_error("invalid batch header");
           const auto count = wire::readU32(request.data() + 4);
-          if (count == 0 || count > 16) throw std::runtime_error("invalid batch count");
+          if (count == 0 || count > SOCI_THRESHOLD_MAX_BATCH_SIZE)
+            throw std::runtime_error("invalid batch count");
           std::size_t batch_offset = 8;
           struct BatchItem { mpz_class ciphertext, cp_share, base; };
           std::vector<BatchItem> batch; batch.reserve(count);
@@ -677,8 +722,12 @@ int runThresholdCsp(const std::string& enclave_path,
           // Leading status byte is consumed by requestPayload; the remaining
           // response is version/reserved/count.
           Bytes reply{0,1,0,0,0,0,0,0,0}; wire::writeU32(reply.data()+5,count);
+          std::vector<mpz_class> ciphertexts,cp_shares;
+          ciphertexts.reserve(count);cp_shares.reserve(count);
+          for(const auto& item:batch){ciphertexts.push_back(item.ciphertext);cp_shares.push_back(item.cp_share);}
+          const auto plaintexts=thresholdDecryptBatch(enclave,ciphertexts,cp_shares,mode);
           std::vector<mpz_class> results;results.reserve(count);
-          for(const auto& item:batch){const auto plaintext=combineDecrypt(enclave,item.cp_share,partialDecrypt(enclave,item.ciphertext,mode),mode);if(request[1]=='M'){const auto masked_a=plaintext/item.base;const auto masked_b=plaintext%item.base;results.push_back(encrypt(masked_a*masked_b));}else results.push_back(encrypt(plaintext>modulus/2?0:1));}
+          for(std::size_t i=0;i<batch.size();++i){const auto& item=batch[i];const auto& plaintext=plaintexts[i];if(request[1]=='M'){const auto masked_a=plaintext/item.base;const auto masked_b=plaintext%item.base;results.push_back(encrypt(masked_a*masked_b));}else results.push_back(encrypt(plaintext>modulus/2?0:1));}
           for(const auto& result:results) wire::appendInteger(reply,result);
           wire::sendFrame(socket,reply);continue;
         }

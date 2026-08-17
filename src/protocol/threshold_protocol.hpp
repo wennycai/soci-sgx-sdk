@@ -2,6 +2,7 @@
 
 #include "soci/secure_ops.hpp"
 #include "soci/predicate_engine.hpp"
+#include "soci/threshold_limits.h"
 
 #include <gmpxx.h>
 #include <cstdint>
@@ -18,6 +19,12 @@ struct ProtocolMetrics {
   std::uint64_t logical_items{};
   std::uint64_t cp_ecalls{};
   std::uint64_t csp_requests{};
+  std::uint64_t csp_ecalls{};
+  std::uint64_t scmp_logical_items{};
+  std::uint64_t scmp_dispatches{};
+  std::uint64_t smul_logical_items{};
+  std::uint64_t smul_dispatches{};
+  std::uint64_t predicate_reveals{};
 };
 
 class ThresholdProtocolClient {

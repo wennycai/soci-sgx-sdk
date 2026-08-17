@@ -45,4 +45,4 @@ mkdir -p "$classes"
   $(find "$repo/bindings/java/src/main/java" "$repo/examples/optimization-demo/java" -name '*.java' -print)
 LD_LIBRARY_PATH="$build${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
   "$java_bin" -Djava.library.path="$build" -cp "$classes" com.soci.demo.SociDemoServer \
-  "$repo/examples/optimization-demo" "$port" "$repo/runtime/off/demo"
+  "$repo/examples/optimization-demo" "$port" OFF "$repo/runtime/off/demo"

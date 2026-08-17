@@ -43,7 +43,7 @@ function(add_soci_enclave ROLE CONFIG)
     "${gen}/soci_t.c" trusted/common/enclave_core.c)
   target_include_directories(soci_${role_lower}_enclave_unsigned PRIVATE
     "${gen}" "${SGX_INCLUDE_DIR}" "${SGX_INCLUDE_DIR}/tlibc"
-    "${GMP_SGX_ROOT}/include")
+    "${GMP_SGX_ROOT}/include" "${PROJECT_SOURCE_DIR}/include")
   target_compile_options(soci_${role_lower}_enclave_unsigned PRIVATE
     -m64 -nostdinc -fvisibility=hidden -fpie -fstack-protector)
   target_compile_definitions(soci_${role_lower}_enclave_unsigned PRIVATE SOCI_SGX_TRUSTED=1)
@@ -109,7 +109,8 @@ if(SOCI_SGX_MODE STREQUAL "HW")
 endif()
 add_dependencies(soci_sgx_crypto_benchmark soci_provisioning_enclave)
 add_executable(soci_sgx_threshold_test tests/test_sgx_threshold.cpp "${SGX_U_GEN}/soci_u.c")
-target_include_directories(soci_sgx_threshold_test PRIVATE "${SGX_INCLUDE_DIR}" "${SGX_U_GEN}")
+target_include_directories(soci_sgx_threshold_test PRIVATE
+  "${SGX_INCLUDE_DIR}" "${SGX_U_GEN}" "${PROJECT_SOURCE_DIR}/include")
 target_link_directories(soci_sgx_threshold_test PRIVATE "${SGX_LIBRARY_DIR}")
 target_link_libraries(soci_sgx_threshold_test PRIVATE ${SGX_URTS} pthread)
 if(SOCI_SGX_MODE STREQUAL "HW")

@@ -1,5 +1,6 @@
 #include <sgx_urts.h>
 #include "soci_u.h"
+#include "soci/threshold_limits.h"
 #include <gmpxx.h>
 #include <array>
 #include <cstdint>
@@ -78,6 +79,31 @@ int main(int argc,char** argv) {
         plain.size(),&plain_size)!=SGX_SUCCESS||rv)throw std::runtime_error("combine failed");
     plain.resize(plain_size);
     if(parse_value(plain,"SPLN")!=m)throw std::runtime_error("wrong plaintext");
+    auto batch_request=[&](uint32_t count) {
+      std::vector<uint8_t> value{'S','T','D','B',1,mode,0,0,0,0,0,0};
+      put32(value.data()+8,count);
+      for(uint32_t i=0;i<count;i++){append_mpz(value,c);append_mpz(value,u1);}
+      return value;
+    };
+    auto require_batch_ok=[&](uint32_t count) {
+      auto input=batch_request(count);std::vector<uint8_t> output(512*1024);size_t size=0;rv=99;
+      if(ecall_threshold_decrypt_batch(csp,&rv,input.data(),input.size(),output.data(),output.size(),&size)!=SGX_SUCCESS||rv)
+        throw std::runtime_error("valid threshold batch rejected");
+      output.resize(size);if(output.size()<12||std::memcmp(output.data(),"STDR",4)||get32(output.data()+8)!=count)
+        throw std::runtime_error("bad threshold batch response");
+      size_t offset=12;for(uint32_t i=0;i<count;i++){if(offset+4>output.size())throw std::runtime_error("short threshold batch response");uint32_t len=get32(output.data()+offset);offset+=4;if(!len||len>output.size()-offset)throw std::runtime_error("bad threshold batch item");mpz_class got;mpz_import(got.get_mpz_t(),len,1,1,1,0,output.data()+offset);offset+=len;if(got!=m)throw std::runtime_error("wrong threshold batch plaintext");}if(offset!=output.size())throw std::runtime_error("trailing threshold batch response");
+    };
+    auto require_batch_bad=[&](std::vector<uint8_t> input) {
+      std::vector<uint8_t> output(512*1024);size_t size=0;rv=0;
+      const auto call=ecall_threshold_decrypt_batch(csp,&rv,input.data(),input.size(),output.data(),output.size(),&size);
+      if(call!=SGX_SUCCESS||rv==0||size!=0)
+        throw std::runtime_error("malformed threshold batch did not fail closed");
+    };
+    require_batch_ok(1);require_batch_ok(SOCI_THRESHOLD_MAX_BATCH_SIZE);
+    require_batch_bad(batch_request(SOCI_THRESHOLD_MAX_BATCH_SIZE+1));
+    auto wrong_count=batch_request(1);put32(wrong_count.data()+8,2);require_batch_bad(std::move(wrong_count));
+    auto truncated=batch_request(1);truncated.pop_back();require_batch_bad(std::move(truncated));
+    auto trailing=batch_request(1);trailing.push_back(0);require_batch_bad(std::move(trailing));
     std::cout<<"SGX "<<argv[4]<<" threshold provisioning and CP/CSP decrypt passed\n";
     sgx_destroy_enclave(provisioning);sgx_destroy_enclave(cp);sgx_destroy_enclave(csp);return 0;
   } catch(const std::exception& e) {

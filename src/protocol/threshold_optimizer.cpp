@@ -23,7 +23,20 @@ class ThresholdConfidentialRuntime::Impl {
 
   EncryptedBranchAndBoundResult optimize(
       const EncryptedOptimizationRequest& request) {
-    return optimizer_.optimize(request);
+    const auto before=protocol_.metrics();
+    auto result=optimizer_.optimize(request);
+    const auto after=protocol_.metrics();auto& stats=result.stats;
+    stats.scmp_logical_items=after.scmp_logical_items-before.scmp_logical_items;
+    stats.scmp_dispatches=after.scmp_dispatches-before.scmp_dispatches;
+    stats.smul_logical_items=after.smul_logical_items-before.smul_logical_items;
+    stats.smul_dispatches=after.smul_dispatches-before.smul_dispatches;
+    stats.cp_ecalls=after.cp_ecalls-before.cp_ecalls;
+    stats.csp_ecalls=after.csp_ecalls-before.csp_ecalls;
+    stats.csp_requests=after.csp_requests-before.csp_requests;
+    stats.predicate_reveals=after.predicate_reveals-before.predicate_reveals;
+    stats.cp_enclave_seconds=(after.cp_enclave_microseconds-before.cp_enclave_microseconds)/1'000'000.0;
+    stats.network_seconds=(after.network_microseconds-before.network_microseconds)/1'000'000.0;
+    return result;
   }
 
  private:

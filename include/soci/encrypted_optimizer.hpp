@@ -33,6 +33,16 @@ struct EncryptedOptimizationStats {
   std::uint64_t accept_predicates{};
   std::uint64_t multi_bound_prune_nodes{};
   std::uint64_t objective_bound_comparisons{};
+  std::uint64_t scmp_logical_items{};
+  std::uint64_t scmp_dispatches{};
+  std::uint64_t smul_logical_items{};
+  std::uint64_t smul_dispatches{};
+  std::uint64_t cp_ecalls{};
+  std::uint64_t csp_ecalls{};
+  std::uint64_t csp_requests{};
+  std::uint64_t predicate_reveals{};
+  double cp_enclave_seconds{};
+  double network_seconds{};
   double preprocessing_seconds{};
   double search_seconds{};
   double total_seconds{};

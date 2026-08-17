@@ -73,10 +73,34 @@ if(SOCI_BUILD_PYTHON)
 endif()
 if(SOCI_BUILD_JAVA)
   find_package(JNI QUIET)
+  if(NOT JNI_FOUND AND DEFINED ENV{JAVA_HOME})
+    find_path(SOCI_JNI_INCLUDE_DIR jni.h
+      PATHS "$ENV{JAVA_HOME}/include" NO_DEFAULT_PATH)
+    find_path(SOCI_JNI_PLATFORM_INCLUDE_DIR jni_md.h
+      PATHS "$ENV{JAVA_HOME}/include/linux" NO_DEFAULT_PATH)
+    if(SOCI_JNI_INCLUDE_DIR AND SOCI_JNI_PLATFORM_INCLUDE_DIR)
+      set(JNI_FOUND TRUE)
+      set(JNI_INCLUDE_DIRS
+        "${SOCI_JNI_INCLUDE_DIR}" "${SOCI_JNI_PLATFORM_INCLUDE_DIR}")
+    endif()
+  endif()
   if(JNI_FOUND)
     add_library(soci_jni SHARED bindings/java/native/soci_jni.cpp)
     target_include_directories(soci_jni PRIVATE ${JNI_INCLUDE_DIRS})
     target_link_libraries(soci_jni PRIVATE soci_sdk)
+    add_library(soci_demo_bridge SHARED
+      examples/optimization-demo/native/confidential_demo_bridge.cpp)
+    target_include_directories(soci_demo_bridge PRIVATE
+      ${JNI_INCLUDE_DIRS} include src)
+    target_link_libraries(soci_demo_bridge PRIVATE soci_sdk)
+    target_compile_definitions(soci_demo_bridge PRIVATE
+      SOCI_DEMO_MODE="${SOCI_SGX_MODE}")
+    if(NOT SOCI_SGX_MODE STREQUAL "OFF")
+      target_link_directories(soci_demo_bridge PRIVATE "${SGX_LIBRARY_DIR}")
+      target_link_libraries(soci_demo_bridge PRIVATE soci_threshold_optimizer)
+      target_compile_definitions(soci_demo_bridge PRIVATE
+        SOCI_DEMO_HAS_THRESHOLD=1)
+    endif()
   else()
     message(STATUS "JNI headers not found; JNI library skipped")
   endif()

@@ -6,6 +6,7 @@
 #include <sgx_trts.h>
 #include <sgx_tseal.h>
 #include <gmp.h>
+#include "soci/threshold_limits.h"
 
 /*
  * GMP's allocation/assertion failure objects reference host stdio and signal
@@ -151,11 +152,10 @@ uint32_t ecall_partial_decrypt(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,
   memcpy(out,"SPAR",4);out[4]=1;out[5]=runtime_mode;out[6]=role;out[7]=0;put32(out+8,(uint32_t)len);
   size_t wrote=0;mpz_export(out+12,&wrote,1,1,1,0,u);wipe(c);wipe(u);return wrote==len?OK:CRYPTO;
 }
-#define MAX_BATCH_SIZE 16u
 uint32_t ecall_partial_decrypt_batch(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,size_t*out_size){
   if(!initialized||!keyed||(role!=1&&role!=2))return STATE;
   if(!out_size||!header(in,in_size,"SPDB")||in_size<12||in[6]!=0||in[7]!=0)return INVALID;
-  uint32_t count=be32(in+8);if(!count||count>MAX_BATCH_SIZE)return INVALID;
+  uint32_t count=be32(in+8);if(!count||count>SOCI_THRESHOLD_MAX_BATCH_SIZE)return INVALID;
   size_t pos=12,out_pos=12;mpz_t c,u;mpz_init(c);mpz_init(u);bool good=true;
   for(uint32_t i=0;i<count&&good;i++){
     good=import_at(c,in,in_size,&pos)&&mpz_cmp_ui(c,0)>0&&mpz_cmp(c,nsq)<0;
@@ -178,6 +178,29 @@ uint32_t ecall_combine_decrypt(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,
   memcpy(out,"SPLN",4);out[4]=1;out[5]=runtime_mode;out[6]=3;out[7]=0;put32(out+8,(uint32_t)len);
   size_t wrote=0;mpz_export(out+12,&wrote,1,1,1,0,m);if(!wrote&&mpz_cmp_ui(m,0)==0){out[12]=0;wrote=1;}
   wipe(u1);wipe(u2);wipe(u);wipe(m);return wrote==len?OK:CRYPTO;
+}
+uint32_t ecall_threshold_decrypt_batch(uint8_t*in,size_t in_size,uint8_t*out,size_t cap,size_t*out_size){
+  if(!initialized||!keyed||role!=2)return STATE;
+  if(!out_size||!header(in,in_size,"STDB")||in_size<12||in[6]!=0||in[7]!=0)return INVALID;
+  uint32_t count=be32(in+8);if(!count||count>SOCI_THRESHOLD_MAX_BATCH_SIZE)return INVALID;
+  mpz_t*c=(mpz_t*)malloc(sizeof(mpz_t)*count),*u1=(mpz_t*)malloc(sizeof(mpz_t)*count);
+  if(!c||!u1){free(c);free(u1);return CRYPTO;}
+  for(uint32_t i=0;i<count;i++){mpz_init(c[i]);mpz_init(u1[i]);}
+  size_t pos=12;bool good=true;
+  for(uint32_t i=0;i<count&&good;i++)
+    good=import_at(c[i],in,in_size,&pos)&&import_at(u1[i],in,in_size,&pos)&&
+         mpz_cmp_ui(c[i],0)>0&&mpz_cmp(c[i],nsq)<0&&
+         mpz_cmp_ui(u1[i],0)>0&&mpz_cmp(u1[i],nsq)<0;
+  good=good&&pos==in_size;
+  mpz_t u2,u,m;mpz_init(u2);mpz_init(u);mpz_init(m);size_t out_pos=12;
+  for(uint32_t i=0;i<count&&good;i++){
+    mpz_powm(u2,c[i],lambda_z,nsq);mpz_mul(u,u1[i],u2);mpz_mod(u,u,nsq);mpz_sub_ui(u,u,1);
+    good=mpz_divisible_p(u,n)!=0;
+    if(good){mpz_fdiv_q(u,u,n);mpz_mul(m,u,mu);mpz_mod(m,m,n);good=export_at(out,cap,&out_pos,m);}
+  }
+  if(good&&cap>=12){memcpy(out,"STDR",4);out[4]=1;out[5]=runtime_mode;out[6]=3;out[7]=0;put32(out+8,count);*out_size=out_pos;}
+  for(uint32_t i=0;i<count;i++){wipe(c[i]);wipe(u1[i]);}free(c);free(u1);wipe(u2);wipe(u);wipe(m);
+  return good?OK:INVALID;
 }
 uint32_t ecall_load_sealed_key(uint8_t*in,size_t size){
   if(!initialized||!in||size<sizeof(sgx_sealed_data_t)||size>MAX_INPUT)return INVALID;

@@ -152,10 +152,34 @@ int main(int argc, char** argv) {
                 predicate_metrics_before.logical_items == 14,
             "predicate batching changed SCMP/SMUL logical call count");
     require(predicate_metrics_after.cp_ecalls -
-                predicate_metrics_before.cp_ecalls == 8 &&
+                predicate_metrics_before.cp_ecalls == 11 &&
                 predicate_metrics_after.csp_requests -
-                predicate_metrics_before.csp_requests == 8,
+                predicate_metrics_before.csp_requests == 11 &&
+                predicate_metrics_after.csp_ecalls -
+                predicate_metrics_before.csp_ecalls == 14 &&
+                predicate_metrics_after.scmp_logical_items -
+                predicate_metrics_before.scmp_logical_items == 8 &&
+                predicate_metrics_after.scmp_dispatches -
+                predicate_metrics_before.scmp_dispatches == 3 &&
+                predicate_metrics_after.smul_logical_items -
+                predicate_metrics_before.smul_logical_items == 6 &&
+                predicate_metrics_after.smul_dispatches -
+                predicate_metrics_before.smul_dispatches == 5 &&
+                predicate_metrics_after.predicate_reveals -
+                predicate_metrics_before.predicate_reveals == 3,
             "predicate batching did not reduce ECALL/request dispatches");
+    stage = "K=16 prune batch";
+    std::vector<soci::secure::Ciphertext> k16_bounds;
+    for(std::size_t i=0;i<16;++i)k16_bounds.push_back(number(9));
+    const auto k16_before=protocol.metrics();++predicate_sequence;
+    require(!predicate_engine.pruneNode(
+                predicateContext(soci::secure::PredicateType::prune_node),
+                {number(0),std::move(k16_bounds),true,number(10)}),
+            "K=16 equal/lower bounds pruned");
+    const auto k16_after=protocol.metrics();
+    require(k16_after.scmp_logical_items-k16_before.scmp_logical_items==17&&
+                k16_after.scmp_dispatches-k16_before.scmp_dispatches==1,
+            "K=16 PRUNE was not one 17-item SCMP batch");
     stage = "composite operations";
     const auto yes = ops.greaterThan(number(5), number(3));
     const auto no = ops.greaterThan(number(3), number(5));
