@@ -132,6 +132,13 @@ if(SOCI_SGX_MODE STREQUAL "HW")
 endif()
 add_dependencies(soci_threshold_protocol soci_provisioning_enclave soci_cp_enclave soci_csp_enclave)
 
+add_executable(soci_threshold_wire_test tests/test_threshold_wire.cpp)
+target_include_directories(soci_threshold_wire_test PRIVATE
+  "${PROJECT_SOURCE_DIR}/src")
+target_link_directories(soci_threshold_wire_test PRIVATE "${SGX_LIBRARY_DIR}")
+target_link_libraries(soci_threshold_wire_test PRIVATE
+  soci_threshold_protocol)
+
 add_library(soci_threshold_optimizer STATIC
   src/protocol/threshold_optimizer.cpp)
 target_include_directories(soci_threshold_optimizer PRIVATE

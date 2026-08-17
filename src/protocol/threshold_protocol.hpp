@@ -19,6 +19,10 @@ struct ProtocolMetrics {
   double host_encrypt_microseconds{};
   double host_scalar_powm_microseconds{};
   double csp_enclave_microseconds{};
+  double csp_request_microseconds{};
+  double csp_encrypt_microseconds{};
+  double csp_parse_serialize_microseconds{};
+  double csp_socket_send_microseconds{};
   std::uint64_t host_encrypt_calls{};
   std::uint64_t host_scalar_powm_calls{};
   std::uint64_t logical_items{};
@@ -61,6 +65,7 @@ class ThresholdProtocolClient {
   mpz_class decryptForTesting(const mpz_class& ciphertext,
                               ProtocolMetrics* metrics = nullptr);
   void requestServerShutdown();
+  void refreshCspMetrics();
   const mpz_class& modulus() const noexcept;
   ThresholdMode mode() const noexcept;
   const ProtocolMetrics& metrics() const noexcept;

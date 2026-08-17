@@ -23,8 +23,10 @@ class ThresholdConfidentialRuntime::Impl {
 
   EncryptedBranchAndBoundResult optimize(
       const EncryptedOptimizationRequest& request) {
+    protocol_.refreshCspMetrics();
     const auto before=protocol_.metrics();
     auto result=optimizer_.optimize(request);
+    protocol_.refreshCspMetrics();
     const auto after=protocol_.metrics();auto& stats=result.stats;
     stats.scmp_logical_items=after.scmp_logical_items-before.scmp_logical_items;
     stats.scmp_dispatches=after.scmp_dispatches-before.scmp_dispatches;
@@ -39,6 +41,10 @@ class ThresholdConfidentialRuntime::Impl {
     stats.host_encrypt_seconds=(after.host_encrypt_microseconds-before.host_encrypt_microseconds)/1'000'000.0;
     stats.host_scalar_powm_seconds=(after.host_scalar_powm_microseconds-before.host_scalar_powm_microseconds)/1'000'000.0;
     stats.csp_enclave_seconds=(after.csp_enclave_microseconds-before.csp_enclave_microseconds)/1'000'000.0;
+    stats.csp_request_seconds=(after.csp_request_microseconds-before.csp_request_microseconds)/1'000'000.0;
+    stats.csp_encrypt_seconds=(after.csp_encrypt_microseconds-before.csp_encrypt_microseconds)/1'000'000.0;
+    stats.csp_parse_serialize_seconds=(after.csp_parse_serialize_microseconds-before.csp_parse_serialize_microseconds)/1'000'000.0;
+    stats.csp_socket_send_seconds=(after.csp_socket_send_microseconds-before.csp_socket_send_microseconds)/1'000'000.0;
     stats.host_encrypt_calls=after.host_encrypt_calls-before.host_encrypt_calls;
     stats.host_scalar_powm_calls=after.host_scalar_powm_calls-before.host_scalar_powm_calls;
     return result;

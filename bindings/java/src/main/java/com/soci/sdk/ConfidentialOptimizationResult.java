@@ -12,6 +12,8 @@ public final class ConfidentialOptimizationResult {
   public final double preprocessingSeconds, searchSeconds, totalSeconds;
   public final double hostEncryptSeconds, hostScalarPowmSeconds,
       cpEnclaveSeconds, cspEnclaveSeconds, networkSeconds;
+  public final double cspRequestSeconds, cspEncryptSeconds,
+      cspParseSerializeSeconds, cspSocketSendSeconds;
   public final long hostEncryptCalls, hostScalarPowmCalls;
 
   public ConfidentialOptimizationResult(boolean feasible, int[] solution,
@@ -23,6 +25,8 @@ public final class ConfidentialOptimizationResult {
       long hostEncryptCalls,long hostScalarPowmCalls,
       double hostEncryptSeconds,double hostScalarPowmSeconds,
       double cpEnclaveSeconds,double cspEnclaveSeconds,double networkSeconds,
+      double cspRequestSeconds,double cspEncryptSeconds,
+      double cspParseSerializeSeconds,double cspSocketSendSeconds,
       double preprocessingSeconds,
       double searchSeconds,double totalSeconds) {
     this.feasible=feasible; this.solution=solution.clone();
@@ -41,6 +45,10 @@ public final class ConfidentialOptimizationResult {
     this.cpEnclaveSeconds=cpEnclaveSeconds;
     this.cspEnclaveSeconds=cspEnclaveSeconds;
     this.networkSeconds=networkSeconds;
+    this.cspRequestSeconds=cspRequestSeconds;
+    this.cspEncryptSeconds=cspEncryptSeconds;
+    this.cspParseSerializeSeconds=cspParseSerializeSeconds;
+    this.cspSocketSendSeconds=cspSocketSendSeconds;
     this.preprocessingSeconds=preprocessingSeconds;
     this.searchSeconds=searchSeconds; this.totalSeconds=totalSeconds;
   }

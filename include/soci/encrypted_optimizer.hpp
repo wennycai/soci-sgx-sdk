@@ -46,6 +46,10 @@ struct EncryptedOptimizationStats {
   double host_encrypt_seconds{};
   double host_scalar_powm_seconds{};
   double csp_enclave_seconds{};
+  double csp_request_seconds{};
+  double csp_encrypt_seconds{};
+  double csp_parse_serialize_seconds{};
+  double csp_socket_send_seconds{};
   std::uint64_t host_encrypt_calls{};
   std::uint64_t host_scalar_powm_calls{};
   double preprocessing_seconds{};

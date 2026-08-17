@@ -128,6 +128,22 @@ int main(int argc, char** argv) {
     stage = "negative secureMul";
     require(reveal(ops.secureMul(number(-5), number(3))) == -15,
             "negative secureMul failed");
+    stage = "parallel batch encryption independence";
+    std::vector<std::pair<soci::secure::Ciphertext,
+                          soci::secure::Ciphertext>> repeated_products;
+    for(std::size_t i=0;i<8;++i)
+      repeated_products.emplace_back(number(5),number(3));
+    const auto independently_encrypted=ops.secureMulBatch(repeated_products);
+    require(independently_encrypted.size()==repeated_products.size(),
+            "parallel SMUL batch size changed");
+    for(std::size_t i=0;i<independently_encrypted.size();++i) {
+      require(reveal(independently_encrypted[i])==15,
+              "parallel SMUL encryption changed plaintext");
+      for(std::size_t j=0;j<i;++j)
+        require(independently_encrypted[i].bytes!=
+                    independently_encrypted[j].bytes,
+                "parallel Paillier encryption reused a randomizer");
+    }
     stage = "semantic predicates";
     const auto predicate_metrics_before = protocol.metrics();
     ++predicate_sequence;

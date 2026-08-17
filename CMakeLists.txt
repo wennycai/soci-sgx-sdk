@@ -152,6 +152,7 @@ if(SOCI_SGX_MODE STREQUAL "OFF")
       COMMAND soci_optimizer_benchmark --rows 3 --k 1)
   endif()
 else()
+  add_test(NAME soci_threshold_wire_transport COMMAND soci_threshold_wire_test)
   add_test(NAME soci_sgx_cp_lifecycle COMMAND soci_sgx_lifecycle_test
     "${CMAKE_BINARY_DIR}/soci_cp_enclave.signed.so" "${SOCI_SGX_MODE}")
   add_test(NAME soci_sgx_csp_lifecycle COMMAND soci_sgx_lifecycle_test

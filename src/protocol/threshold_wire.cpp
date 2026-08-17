@@ -5,8 +5,10 @@
 #include <cstring>
 #include <fstream>
 #include <netdb.h>
+#include <netinet/tcp.h>
 #include <stdexcept>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 namespace soci::protocol::wire {
@@ -88,10 +90,27 @@ void sendFrame(int fd, const Bytes& payload) {
   if (payload.size() > UINT32_MAX) throw std::runtime_error("frame too large");
   std::uint8_t header[4];
   writeU32(header, static_cast<std::uint32_t>(payload.size()));
-  transferExact(fd, header, sizeof(header), true);
-  if (!payload.empty())
-    transferExact(fd, const_cast<std::uint8_t*>(payload.data()), payload.size(),
-                  true);
+  iovec vectors[2]{{header, sizeof(header)},
+                    {const_cast<std::uint8_t*>(payload.data()),
+                     payload.size()}};
+  std::size_t index = 0;
+  while (index < 2) {
+    msghdr message{};
+    message.msg_iov = vectors + index;
+    message.msg_iovlen = 2 - index;
+    const auto sent = sendmsg(fd, &message, MSG_NOSIGNAL);
+    if (sent <= 0) throw std::runtime_error("socket closed");
+    auto remaining = static_cast<std::size_t>(sent);
+    while (index < 2 && remaining >= vectors[index].iov_len) {
+      remaining -= vectors[index].iov_len;
+      ++index;
+    }
+    if (index < 2 && remaining != 0) {
+      vectors[index].iov_base =
+          static_cast<std::uint8_t*>(vectors[index].iov_base) + remaining;
+      vectors[index].iov_len -= remaining;
+    }
+  }
 }
 
 Bytes receiveFrame(int fd) {
@@ -102,6 +121,12 @@ Bytes receiveFrame(int fd) {
   Bytes payload(size);
   if (!payload.empty()) transferExact(fd, payload.data(), payload.size(), false);
   return payload;
+}
+
+void setTcpNoDelay(int fd) {
+  const int enabled = 1;
+  if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enabled, sizeof(enabled)) != 0)
+    throw std::runtime_error("cannot enable TCP_NODELAY");
 }
 
 int connectTcp(const std::string& host, int port) {
@@ -115,6 +140,13 @@ int connectTcp(const std::string& host, int port) {
         const int fd = socket(address->ai_family, address->ai_socktype,
                               address->ai_protocol);
         if (fd >= 0 && connect(fd, address->ai_addr, address->ai_addrlen) == 0) {
+          try {
+            setTcpNoDelay(fd);
+          } catch (...) {
+            close(fd);
+            freeaddrinfo(addresses);
+            throw;
+          }
           freeaddrinfo(addresses);
           return fd;
         }
