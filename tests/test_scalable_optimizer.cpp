@@ -30,6 +30,9 @@ int main() {
   assert(first.total_cost == exact.total_cost);
   assert(first.ratio >= 0.5 && first.ratio <= 1.0);
   assert(first.feasible_rate >= 0.0 && first.feasible_rate <= 1.0);
+  assert(first.convergence_costs.size() == config.generations + 1);
+  for (std::size_t i = 1; i < first.convergence_costs.size(); ++i)
+    assert(first.convergence_costs[i] <= first.convergence_costs[i - 1]);
   for (std::size_t i = 0; i < first.solution.size(); ++i)
     assert(costs[i][static_cast<std::size_t>(first.solution[i] - 1)]);
 

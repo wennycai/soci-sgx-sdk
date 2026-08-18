@@ -137,7 +137,10 @@ ScalableOptimizationResult ScalableOptimizer::optimize(
   repair(model,cheapest,penalty);evaluate(model,cheapest,penalty);population.push_back(cheapest);
   while(population.size()<config_.population)population.push_back(random_individual());
   Individual best;bool have_best=false;std::size_t best_generation=0;
-  auto retain_best=[&](std::size_t generation){for(const auto&x:population)if(x.feasible&&(!have_best||order(x,best))){best=x;have_best=true;best_generation=generation;}};
+  std::vector<double> convergence(config_.generations+1,
+                                  std::numeric_limits<double>::quiet_NaN());
+  auto retain_best=[&](std::size_t generation){for(const auto&x:population)if(x.feasible&&(!have_best||order(x,best))){best=x;have_best=true;best_generation=generation;}
+    if(have_best)convergence[generation]=static_cast<double>(best.total)/kScale;};
   retain_best(0);
   for(std::size_t generation=1;generation<=config_.generations;++generation){
     std::sort(population.begin(),population.end(),order);std::vector<Individual> next;
@@ -148,7 +151,7 @@ ScalableOptimizationResult ScalableOptimizer::optimize(
   }
   if(!have_best)throw OptimizationError(Status::no_feasible_solution,"GA found no feasible assignment");
   const auto feasible=std::count_if(population.begin(),population.end(),[](const auto&x){return x.feasible;});
-  ScalableOptimizationResult result;result.solution.reserve(best.genes.size());for(auto method:best.genes)result.solution.push_back(method+1);result.total_cost=static_cast<double>(best.total)/kScale;result.ratio=static_cast<double>(best.c12)/static_cast<double>(best.total);result.generation=best_generation;result.feasible_rate=static_cast<double>(feasible)/population.size();result.runtime_seconds=std::chrono::duration<double>(Clock::now()-start).count();return result;
+  ScalableOptimizationResult result;result.solution.reserve(best.genes.size());for(auto method:best.genes)result.solution.push_back(method+1);result.total_cost=static_cast<double>(best.total)/kScale;result.ratio=static_cast<double>(best.c12)/static_cast<double>(best.total);result.generation=best_generation;result.feasible_rate=static_cast<double>(feasible)/population.size();result.runtime_seconds=std::chrono::duration<double>(Clock::now()-start).count();result.convergence_costs=std::move(convergence);return result;
 }
 
 }  // namespace soci::optimization

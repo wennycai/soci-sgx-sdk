@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace soci::optimization {
 
@@ -22,6 +23,7 @@ struct ScalableOptimizationResult : OptimizationResult {
   std::size_t generation{};
   double runtime_seconds{};
   double feasible_rate{};
+  std::vector<double> convergence_costs;
 };
 
 // Plaintext prototype for large row counts. It is intentionally separate from

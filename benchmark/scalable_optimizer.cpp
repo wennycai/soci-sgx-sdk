@@ -51,6 +51,16 @@ int main(int argc, char** argv) try {
             << ",\"generation\":" << ga.generation
             << ",\"runtime_seconds\":" << ga.runtime_seconds
             << ",\"feasible_rate\":" << ga.feasible_rate;
+  std::cout << ",\"convergence_costs\":[";
+  for (std::size_t i = 0; i < ga.convergence_costs.size(); ++i) {
+    if (i) std::cout << ',';
+    if (rows <= 30 || i == 0 || i + 1 == ga.convergence_costs.size() ||
+        i % std::max<std::size_t>(1, ga.convergence_costs.size() / 100) == 0)
+      std::cout << ga.convergence_costs[i];
+    else
+      std::cout << "null";
+  }
+  std::cout << ']';
   if (rows <= 30) {
     const auto start = std::chrono::steady_clock::now();
     const auto exact = soci::optimization::optimize_plain(costs, "0.5");
