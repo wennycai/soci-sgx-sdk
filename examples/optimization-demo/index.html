@@ -11,7 +11,7 @@
 <body>
   <header class="topbar">
     <a class="brand" href="index.html"><span class="brand-mark">S</span><span>本地化率<b>优化工具</b></span></a>
-    <div class="top-actions"><nav class="mode-nav" aria-label="模式切换"><a class="active" href="index.html">双通道模式</a><a href="workflow.html">双角色模式</a></nav><span class="status"><i></i> 系统运行正常</span><button id="themeButton" class="icon-button" aria-label="切换主题">◐</button></div>
+    <div class="top-actions"><nav class="mode-nav" aria-label="模式切换"><a class="active" href="index.html">双通道模式</a><a href="workflow.html">三方角色模式</a></nav><span class="status"><i></i> 运行模式 <b id="runtimeMode">检测中</b></span><button id="themeButton" class="icon-button" aria-label="切换主题">◐</button></div>
   </header>
 
   <main>
@@ -27,6 +27,7 @@
         <div class="table-wrap"><table id="costTable"><thead><tr><th>物料</th><th>方式 1</th><th>方式 2</th><th>方式 3</th></tr></thead><tbody></tbody></table></div>
         <button id="addRowButton" class="add-button">＋ 添加物料</button>
         <div class="threshold-block"><div class="threshold-title"><label for="threshold">本地化率阈值</label><output id="thresholdValue">0.50</output></div><input id="threshold" type="range" min="0" max="0.99" step="0.01" value="0.5"><div class="range-label"><span>0</span><span>ratio ≥ threshold</span><span>0.99</span></div></div>
+        <div class="threshold-block"><div class="threshold-title"><label for="solverStrategy">求解策略</label><output id="activeStrategy">current_suffix</output></div><select id="solverStrategy"><option value="current_suffix">current_suffix（默认）</option><option value="lagrangian">lagrangian（显式启用）</option></select><select id="gridSize" disabled><option value="3">K = 3</option><option value="5">K = 5</option><option value="9">K = 9</option></select><div class="range-label"><span>Lagrangian 可能减少节点</span><span>但增加安全协议开销</span></div></div>
         <button id="runButton" class="run-button"><span>同时运行两条路径</span><b>→</b></button>
       </aside>
 
@@ -49,14 +50,15 @@
             <div class="data-window cipher-window"><div class="window-bar"><span>加密快照</span><em>计算方仅看到密文</em></div><div id="cipherPreview" class="matrix-preview cipher-preview">等待加密…</div></div>
             <ol class="logic-list secure-list">
               <li data-secure-step="1"><i>01</i><div><b>定点编码 + Paillier 加密</b><span id="encryptDetail">Enc(c[i,j])</span></div></li>
-              <li data-secure-step="2"><i>02</i><div><b>分支定界 + 同态聚合</b><span>候选聚合值不解密</span></div></li>
-              <li data-secure-step="3"><i>03</i><div><b>SCMP 验证 ratio</b><span>(S−T)·C₁₂ ≥ T·C₃</span></div></li>
-              <li data-secure-step="4"><i>04</i><div><b>Enclave 授权解密</b><span>仅揭示最终结果</span></div></li>
+              <li data-secure-step="2"><i>02</i><div><b>Encrypted B&amp;B</b><span>固定 method1 → method2 → method3 DFS</span></div></li>
+              <li data-secure-step="3"><i>03</i><div><b>Lagrangian Bound</b><span>密态 LB；current_suffix 时使用基础 bound</span></div></li>
+              <li data-secure-step="4"><i>04</i><div><b>PredicateEngine</b><span>最终仅 reveal PRUNE / ACCEPT</span></div></li>
+              <li data-secure-step="5"><i>05</i><div><b>最终授权结果</b><span>不展示 LB、linear upper、λ winner 或原因</span></div></li>
             </ol>
             <div class="perf-box secure-perf"><span>Paillier 加密计算耗时 <button class="info" title="从数据加密到优化结果生成的端到端耗时">?</button></span><strong id="secureTime">—</strong><small id="securePerfNote">运行后显示实际耗时</small></div>
           </article>
         </div>
-        <div class="workload-strip"><span><b id="visitedNodes">—</b>访问节点</span><span><b id="prunedNodes">—</b>剪枝节点</span><span><b id="candidateCount">—</b>可行叶节点</span><span><b id="encryptedCells">—</b>加密成本</span></div>
+        <div class="workload-strip"><span><b id="visitedNodes">—</b>访问节点</span><span><b id="prunedNodes">—</b>剪枝节点</span><span><b id="candidateCount">—</b>候选叶节点</span><span><b id="prunePredicates">—</b>PRUNE</span><span><b id="acceptPredicates">—</b>ACCEPT</span></div>
         <div class="disclaimer"><b>数据说明</b><span>成本数据经过 Paillier 加密后参与优化计算，页面展示加密数据、计算过程和最终结果的一致性。</span></div>
       </section>
     </section>

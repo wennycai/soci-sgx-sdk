@@ -1,20 +1,133 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>基于Paillier加密的本地化率优化工具</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="workflow.css"><link rel="stylesheet" href="role-workflow.css"><link rel="stylesheet" href="mode-nav.css"></head>
-<body><header class="topbar"><a class="brand" href="index.html"><span class="brand-mark">S</span><span>本地化率<b>优化工具</b></span></a><div class="top-actions"><nav class="mode-nav" aria-label="模式切换"><a href="index.html">双通道模式</a><a class="active" href="workflow.html">双角色模式</a></nav><span class="status"><i></i> 系统运行正常</span></div></header>
-<main class="flow-main">
-  <section class="flow-hero"><div><p class="eyebrow">PAILLIER ENCRYPTED OPTIMIZATION</p><h1>基于Paillier加密的<br><em>本地化率优化工具</em></h1></div><p>面向数据提供方与数据使用方的安全协作系统，实现成本数据加密、本地化率约束优化和结果授权解密。</p></section>
-  <nav class="role-switch"><button class="active" data-role="owner"><b>A</b><span>数据提供方</span></button><button data-role="compute"><b>B</b><span>数据使用方</span></button></nav>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>三方密态优化业务流程 · 本地化率优化工具</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="workflow.css">
+  <link rel="stylesheet" href="role-workflow.css">
+  <link rel="stylesheet" href="mode-nav.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html"><span class="brand-mark">S</span><span>本地化率<b>优化工具</b></span></a>
+    <div class="top-actions"><nav class="mode-nav" aria-label="模式切换"><a href="index.html">双通道模式</a><a class="active" href="workflow.html">三方角色模式</a></nav><span class="status"><i></i> 运行模式 <b data-runtime-mode>检测中</b></span></div>
+  </header>
 
-  <section class="role-panel" id="ownerPanel">
-    <div class="role-banner owner"><span>A</span><div><b>数据提供方</b><p>上传原始成本数据并生成加密文件，或对计算结果进行授权解密。</p></div><em>加解密权限</em></div>
-    <div class="input-choice"><label><input type="radio" name="ownerInput" value="plain" checked> 上传明文数据</label><label><input type="radio" name="ownerInput" value="encrypted"> 上传计算结果密文</label></div>
-    <article class="flow-card active" id="ownerPlainCard"><div class="flow-card-head"><span class="big-step">A1</span><div><p class="step-label">数据加密</p><h2>加密原始成本文件</h2></div><span class="stage-state">等待上传</span></div><p class="privacy-note">请选择符合模板格式的 `.xlsx` 成本数据文件。文件加密后可提供给角色 B 进行计算。</p><div class="dropzone" id="ownerPlainDrop"><span class="file-glyph">XLSX</span><h3>选择明文成本文件</h3><input id="ownerPlainFile" type="file" accept=".xlsx" hidden><button class="secondary-button">选择文件</button></div><div class="sample-line"><span>首次使用可下载标准模板</span><a href="sample-costs.xlsx" download>下载示例数据 ↓</a></div><div id="ownerPlainMeta" class="file-meta hidden"></div><button id="ownerEncrypt" class="primary-action" disabled>加密并导出 <b>↓</b></button></article>
-    <article class="flow-card hidden" id="ownerEncryptedCard"><div class="flow-card-head"><span class="big-step">A2</span><div><p class="step-label">结果解密</p><h2>解密计算结果</h2></div><span class="stage-state">等待上传</span></div><p class="privacy-note">请选择角色 B 返回的计算结果文件。系统仅解密结果列，原始成本数据保持密文状态。</p><div class="dropzone" id="ownerResultDrop"><span class="file-glyph dark-file">ENC</span><h3>选择计算结果文件</h3><input id="ownerResultFile" type="file" accept=".enc" hidden><button class="secondary-button">选择文件</button></div><div id="ownerResultMeta" class="package-check hidden"></div><button id="ownerDecrypt" class="primary-action" disabled>解密结果并导出 <b>◇</b></button><div id="ownerDecoded" class="decrypted-result hidden"></div></article>
-  </section>
+  <main class="flow-main">
+    <section class="hero">
+      <div><p class="eyebrow">CONFIDENTIAL OPTIMIZATION WORKFLOW</p><h1>三方密态优化<br><em>业务流程</em></h1></div>
+      <div class="hero-copy"><p>A 发起任务，C 加密原始成本，B 仅对密文执行 Phase 1–5 confidential optimization，C 授权解密后 A 获得最终结果。</p><div class="legend"><span><i class="dot raw"></i>明文仅 C 可见</span><span><i class="dot cipher"></i>B 仅见密文</span><span><i class="dot enclave"></i>仅最终授权解密</span></div></div>
+    </section>
 
-  <section class="role-panel hidden" id="computePanel">
-    <div class="role-banner compute"><span>B</span><div><b>数据使用方</b><p>导入加密成本文件，设置本地化率要求并执行优化计算。</p></div><em>计算权限</em></div>
-    <article class="flow-card active"><div class="flow-card-head"><span class="big-step">B1</span><div><p class="step-label">本地化率优化</p><h2>执行加密数据优化计算</h2></div><span class="stage-state">等待上传</span></div><div class="dropzone" id="computeDrop"><span class="file-glyph dark-file">ENC</span><h3>选择加密成本文件</h3><input id="computeFile" type="file" accept=".enc" hidden><button class="secondary-button">选择文件</button></div><div id="computeMeta" class="package-check hidden"></div><div class="threshold-row"><label>最低本地化率</label><input id="computeThreshold" type="number" min="0" max="0.999999" step="0.01" value="0.5"><span>取值范围：0 ≤ T &lt; 1</span></div><button id="computeOptimize" class="primary-action" disabled>开始优化计算 <b>→</b></button><div id="computeResult" class="result-cipher hidden"><span>加密计算结果</span><b>计算完成</b><code></code><small>结果需由角色 A 授权解密后方可查看。</small></div><button id="computeExport" class="primary-action hidden">导出计算结果 <b>↓</b></button></article>
-  </section>
-  <aside class="side-card role-boundary"><b>数据安全说明</b><p>成本数据在传输和计算过程中保持加密状态。角色 B 不持有解密密钥，仅角色 A 可对最终计算结果进行授权解密。</p></aside>
-</main><footer><span>基于Paillier加密的本地化率优化工具</span><span>数据加密 · 安全计算 · 授权解密</span></footer><script src="role-workflow.js"></script></body></html>
+    <nav class="biz-steps" id="bizSteps" aria-label="业务流程进度">
+      <button data-biz="0"><i>1</i><b>发起任务</b><span>A</span></button>
+      <button data-biz="1"><i>2</i><b>接收并加密数据</b><span>C</span></button>
+      <button data-biz="2"><i>3</i><b>委托 B 计算</b><span>A</span></button>
+      <button data-biz="3"><i>4</i><b>密态计算</b><span>B</span></button>
+      <button data-biz="4"><i>5</i><b>返回密文结果</b><span>B</span></button>
+      <button data-biz="5"><i>6</i><b>提交 C 授权</b><span>A</span></button>
+      <button data-biz="6"><i>7</i><b>授权解密</b><span>C</span></button>
+      <button data-biz="7"><i>8</i><b>接收最终结果</b><span>A</span></button>
+    </nav>
+
+    <nav class="role-switch" aria-label="角色切换">
+      <button class="active" data-role="user"><b>A</b><span>数据使用方</span><em class="role-todo hidden" data-todo="user">待处理</em></button>
+      <button data-role="compute"><b>B</b><span>密态计算服务方</span><em class="role-todo hidden" data-todo="compute">待处理</em></button>
+      <button data-role="owner"><b>C</b><span>数据拥有方</span><em class="role-todo hidden" data-todo="owner">待处理</em></button>
+    </nav>
+
+    <section class="role-panel" id="userPanel">
+      <div class="role-banner user"><span>A</span><div><b>数据使用方</b><p>发起优化任务，委托 B 密态计算，提交 C 授权，接收最终授权 solution。</p></div><em>需求与结果权限</em></div>
+
+      <article class="flow-card active" id="aTaskCard">
+        <div class="flow-card-head"><span class="big-step">A1</span><div><p class="step-label">发起任务 · 公开优化需求</p><h2>阈值与求解策略</h2></div><span class="stage-state">待发起</span></div>
+        <p class="privacy-note">A 不获取 C 的原始成本。current_suffix 是默认策略；Lagrangian 可能减少搜索节点，但会增加安全协议开销，不承诺更快。</p>
+        <div class="threshold-row"><label>最低本地化率</label><input id="aThreshold" type="number" min="0" max="0.999999" step="0.01" value="0.5"><select id="aStrategy"><option value="current_suffix">current_suffix</option><option value="lagrangian">lagrangian</option></select><select id="aGrid" disabled><option value="3">K = 3</option><option value="5">K = 5</option><option value="9">K = 9</option></select></div>
+        <button id="aStart" class="primary-action">发起任务并通知 C <b>→</b></button>
+        <div id="aTaskMeta" class="file-meta hidden"></div>
+      </article>
+
+      <article class="flow-card locked" id="aDelegateCard">
+        <div class="flow-card-head"><span class="big-step">A2</span><div><p class="step-label">接收密文 · 委托计算</p><h2>委托 B 执行密态计算</h2></div><span class="stage-state">等待 C 加密</span></div>
+        <p class="privacy-note">A 只接触 Paillier 密文，无法读取任何成本数值；委托内容仅含密文与公开任务参数。</p>
+        <div id="aCipherMeta" class="package-check hidden"></div>
+        <div class="dropzone compact" id="aCipherDrop"><span class="file-glyph dark-file">ENC</span><h3>导入 C 的加密成本文件</h3><p>本页内已自动接收时可跳过</p><input id="aCipherFile" type="file" accept=".enc" hidden><button class="secondary-button">选择文件</button></div>
+        <button id="aDelegate" class="primary-action" disabled>生成委托文件并发送 B <b>→</b></button>
+      </article>
+
+      <article class="flow-card locked" id="aSubmitCard">
+        <div class="flow-card-head"><span class="big-step">A3</span><div><p class="step-label">密文结果 · 提交授权</p><h2>将密文结果提交给 C</h2></div><span class="stage-state">等待 B 返回</span></div>
+        <p class="privacy-note">A 转交的是 B 的密文结果，只有 C 能授权解密；A 此时仍看不到最终数值。</p>
+        <div id="aResultMeta" class="package-check hidden"></div>
+        <div class="dropzone compact" id="aResultDrop"><span class="file-glyph dark-file">ENC</span><h3>导入 B 返回的结果文件</h3><p>本页内已自动接收时可跳过</p><input id="aResultFile" type="file" accept=".enc" hidden><button class="secondary-button">选择文件</button></div>
+        <button id="aSubmit" class="primary-action" disabled>提交给 C 授权解密 <b>→</b></button>
+      </article>
+
+      <article class="flow-card locked" id="aFinalCard">
+        <div class="flow-card-head"><span class="big-step">A4</span><div><p class="step-label">最终结果 · 任务完成</p><h2>接收 C 授权的最终结果</h2></div><span class="stage-state">等待 C 授权</span></div>
+        <div class="dropzone compact" id="aFinalDrop"><span class="file-glyph">JSON</span><h3>导入 C 的授权结果文件</h3><p>本页内已自动接收时可跳过</p><input id="aFinalFile" type="file" accept=".json" hidden><button class="secondary-button">选择文件</button></div>
+        <div id="aFinalResult" class="decrypted-result hidden"></div>
+      </article>
+    </section>
+
+    <section class="role-panel hidden" id="ownerPanel">
+      <div class="role-banner owner"><span>C</span><div><b>数据拥有方</b><p>原始成本仅 C 可见；接收 A 的任务，加密数据，并最终授权解密结果。</p></div><em>数据加密与授权权限</em></div>
+
+      <article class="flow-card locked" id="cEncryptCard">
+        <div class="flow-card-head"><span class="big-step">C1</span><div><p class="step-label">接收任务 · 数据加密</p><h2>加密原始成本文件</h2></div><span class="stage-state">等待 A 发起任务</span></div>
+        <div id="cTaskMeta" class="file-meta hidden"></div>
+        <p class="privacy-note">选择 `.xlsx`。加密后 A/B 只能得到不可读密文，明文不会离开本面板。</p>
+        <div class="dropzone" id="cPlainDrop"><span class="file-glyph">XLSX</span><h3>选择明文成本文件</h3><input id="cPlainFile" type="file" accept=".xlsx" hidden><button class="secondary-button">选择文件</button></div>
+        <div class="sample-line"><span>标准模板</span><a href="sample-costs.xlsx" download>下载示例数据 ↓</a></div>
+        <div id="cPlainMeta" class="file-meta hidden"></div>
+        <button id="cEncrypt" class="primary-action" disabled>按任务加密并导出密文 <b>↓</b></button>
+      </article>
+
+      <article class="flow-card locked" id="cDecryptCard">
+        <div class="flow-card-head"><span class="big-step">C2</span><div><p class="step-label">最终授权</p><h2>授权解密并交付 A</h2></div><span class="stage-state">等待 A 提交</span></div>
+        <p class="privacy-note">只解析最终授权 solution 与结果，不解析中间 bound 或比较关系。</p>
+        <div id="cResultMeta" class="package-check hidden"></div>
+        <div class="dropzone compact" id="cResultDrop"><span class="file-glyph dark-file">ENC</span><h3>导入 A 提交的结果文件</h3><p>本页内已自动接收时可跳过</p><input id="cResultFile" type="file" accept=".enc" hidden><button class="secondary-button">选择文件</button></div>
+        <button id="cDecrypt" class="primary-action" disabled>授权解密 <b>◇</b></button>
+        <div id="cDecoded" class="decrypted-result hidden"></div>
+        <button id="cExport" class="primary-action hidden">重新导出授权结果给 A <b>↓</b></button>
+      </article>
+    </section>
+
+    <section class="role-panel hidden" id="computePanel">
+      <div class="role-banner compute"><span>B</span><div><b>密态计算服务方</b><p>仅接触密文与公开任务参数，执行 Encrypted B&amp;B 和 PredicateEngine。</p></div><em>仅密态计算</em></div>
+
+      <article class="flow-card locked" id="bComputeCard">
+        <div class="flow-card-head"><span class="big-step">B1</span><div><p class="step-label">Confidential optimization</p><h2>执行密态优化计算</h2></div><span class="stage-state">等待 A 委托</span></div>
+        <p class="privacy-note">B 只得到密文和公开阈值/策略，不获知原始成本；不展示 LB、linear_upper、λ winner 或 prune reason。</p>
+        <div class="dropzone compact" id="bTaskDrop"><span class="file-glyph dark-file">ENC</span><h3>导入 A 的委托文件</h3><p>本页内已自动接收时可跳过</p><input id="bTaskFile" type="file" accept=".enc" hidden><button class="secondary-button">选择文件</button></div>
+        <div id="bTaskMeta" class="package-check hidden"></div>
+        <div class="task-params" id="bParams"></div>
+        <button id="bCompute" class="primary-action" disabled>开始密态计算 <b>→</b></button>
+        <div id="bProgress" class="compute-progress hidden">
+          <div class="cp-head"><b id="cpPhase">正在进行密态最优化计算</b><span id="cpPct">0%</span></div>
+          <div class="cp-bar"><i id="cpFill"></i></div>
+          <div class="cp-meta"><span id="cpElapsed">已用 0s</span><span id="cpEta">预计剩余 —</span></div>
+          <small class="cp-note">阶段与剩余时间为前端估算展示，不包含任何密态中间值。</small>
+        </div>
+        <div id="bError" class="compute-error hidden"><span id="bErrorText"></span><button id="bRetry" class="secondary-button">重试</button></div>
+      </article>
+
+      <article class="flow-card locked" id="bReturnCard">
+        <div class="flow-card-head"><span class="big-step">B2</span><div><p class="step-label">密文结果 · 返回 A</p><h2>将密文结果返回 A</h2></div><span class="stage-state">等待计算完成</span></div>
+        <p class="privacy-note">返回内容只有密文结果与公开统计，B 同样无法读取最终数值。</p>
+        <div id="bStats" class="result-cipher hidden"><span>真实密态结果与统计</span><b>计算完成</b><code></code><small></small></div>
+        <button id="bExport" class="primary-action" disabled>导出密文结果并返回 A <b>↓</b></button>
+      </article>
+    </section>
+
+    <div id="flowComplete" class="flow-complete hidden"><b>✓ 业务流程完成</b><span>A 已收到 C 授权的最终优化结果；全过程原始成本仅 C 可见。</span></div>
+
+    <aside class="side-card role-boundary"><b>安全边界</b><p>C 的原始成本仅 C 可见；A/B 不获取原始成本。B 只看到真实密文片段和公开统计。最终只输出授权 solution；不展示 LB、linear_upper、λ winner 或 prune reason。</p></aside>
+  </main>
+  <footer><span>SOCI SGX SDK · Phase 1–5</span><span>Paillier · CP/CSP · PredicateEngine</span></footer>
+  <script src="role-workflow.js"></script>
+</body>
+</html>

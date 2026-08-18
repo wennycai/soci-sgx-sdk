@@ -1,31 +1,62 @@
-# 密态最优化交互演示
+# Phase 1–5 密态最优化交互演示
 
-这是一个 Java/JNI 驱动的 OFF 模式演示。浏览器通过本地 HTTP API 调用 Java
-封装，Java 再通过 `libsoci_jni.so` 调用 SOCI SDK；密文不再由前端伪造。
+现有 Demo 已接入真实 confidential optimization 链路：
 
-```bash
-./examples/optimization-demo/run_off_demo.sh 8080
+```text
+Java/HTTP → Demo JNI bridge → ThresholdConfidentialRuntime
+          → ThresholdSecureOps → ConfidentialOptimizer
+          → PredicateEngine → Phase 5 Encrypted Branch-and-Bound
 ```
 
-浏览器访问 `http://127.0.0.1:8080`。启动脚本构建 OFF SDK 与 JNI、编译零第三方
-依赖的 Java HTTP 服务，然后由该服务同时提供静态页面和 `/api/*` 接口。
+Demo 保留双通道一致性页面和 `.xlsx/.enc` 三方工作流。浏览器 plaintext
+reference 只验证最终 total、C12 和 solution 一致性；页面展示的节点、谓词和耗时
+全部来自 `EncryptedOptimizationStats`。
 
-明文耗时由浏览器参考求解器重复测量；SDK 路径显示 HTTP、Java、JNI 和 OFF
-SDK 的端到端实测时间。当前 SDK 优化控制层仍保留定点成本系数进行分支定界，
-不能解读为求解器控制流已经全程只接触密文。
+## 一条命令启动
 
-## 用户交互工作台
+优先使用 SIM：
 
-访问 `workflow.html` 可进入 A/B 双角色模式：A 是持有私钥的数据拥有方，可将
-明文 Excel 加密后交给 B，或导入 B 返回的计算结果密文并只解密结果列；B 是
-不持有私钥的数据使用方，只能导入 A 的密文、选择最优化算子并将密文结果返还
-给 A。A 解密最后一列后导出 JSON 结果给 B。示例
-`sample-costs.xlsx` 是实际 OOXML 工作簿；`.enc` 是 ZIP-compatible 容器：
+```bash
+./examples/optimization-demo/run_demo.sh sim 8080
+```
 
-- `encrypted-data.xlsx`：SDK 生成的 Paillier 成本密文；
-- `manifest.json`：格式版本、算法、Key ID 与密文结果。
+开发环境没有 Intel SGX SDK 时使用 OFF fallback：
 
-工作流中的成本矩阵、优化结果及解密均调用 Java/JNI SDK。`.enc` 包保存 SDK
-生成的 Paillier 密文；OFF 私钥只保存在本地运行目录中。OFF 不提供 SGX 隔离，
-demo 后端使用不透明作业 ID 在会话内关联 A 的模型，B 的浏览器不接触明文或
-私钥。生产部署仍应切换到 SIM/HW 的 CP/CSP 服务与正式密钥生命周期。
+```bash
+./examples/optimization-demo/run_demo.sh off 8080
+```
+
+访问 <http://127.0.0.1:8080>。脚本会构建 native/JNI、编译 Java 服务并启动
+页面；SIM 脚本还会 provision threshold keys 并启动独立 CSP 服务。
+
+通过 `docker/compose.sim.yaml` 启动时，容器会设置
+`SOCI_DEMO_BIND=0.0.0.0`，使 Docker 的端口映射可从宿主机访问。本机直接启动时
+默认仍只监听 `127.0.0.1`。
+
+## 页面与操作
+
+- 双通道模式：输入成本和阈值，选择 `current_suffix` 或 `lagrangian`，每次只执行
+  一种 confidential strategy，并与独立 plaintext oracle 核对。
+- 三方角色模式：
+  - A（数据使用方）提交公开阈值和策略需求；
+  - C（数据拥有方）上传 `.xlsx`，加密并导出 `.enc`；
+  - B（密态计算服务方）导入密文并执行优化，再将结果 `.enc` 返回；
+  - C 执行最终授权，结果交付 A。
+
+页面展示真实 Paillier 密文片段，以及 `visited_nodes`、`pruned_nodes`、
+`candidate_count`、`prune_predicates`、`accept_predicates` 和
+preprocessing/search/total time。不会展示成本中间值、LB、`linear_upper`、lambda
+winner 或 prune reason。
+
+## SIM、OFF 与当前安全边界
+
+- SIM 走真实 CP/CSP、`ThresholdSecureOps` 和 threshold Predicate resolver，但
+  Intel SGX Simulation 不提供硬件隔离，不能当作 HW 安全或性能证明。
+- OFF 使用相同 `ConfidentialOptimizer`、PredicateEngine 和 Phase 5 solver 语义，
+  但密钥和运算都在普通进程中，只适合开发。
+- Demo bridge 是最小展示接口，不是完整 Phase 7 Java SDK。它采用本机单进程 HTTP
+  服务和内存 job/result token 模拟 A/B/C 交接；尚未提供生产身份认证、远程证明、
+  持久化多租户密钥生命周期、TLS、审计存储或结果授权签名。
+- JNI 不暴露 generic decrypt-bit/reveal API；solver 仍只通过 PredicateEngine
+  reveal 最终 PRUNE/ACCEPT。Demo 最终汇总展示由 C 的原输入和授权 solution 重建，
+  不解密中间 bound。
