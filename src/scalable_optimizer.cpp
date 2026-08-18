@@ -19,7 +19,7 @@ struct Model {
   std::vector<std::array<std::optional<std::int64_t>,3>> costs;
   std::vector<std::vector<std::uint8_t>> available;
   std::int64_t threshold{};
-  std::int64_t max_total{};
+  __int128 max_total{};
 };
 
 Model encode(const CostMatrix& input,const std::string& threshold){
@@ -34,11 +34,10 @@ Model encode(const CostMatrix& input,const std::string& threshold){
       maximum=std::max(maximum,*row[method]);if(method==2)any_method3=true;
     }
     if(available.empty())throw OptimizationError(Status::no_feasible_solution,"each material needs an available method");
-    if(maximum>std::numeric_limits<std::int64_t>::max()-model.max_total)
-      throw OptimizationError(Status::numeric_range_exceeded,"GA total cost overflow");
     model.max_total+=maximum;model.costs.push_back(row);
     model.available.push_back(std::move(available));
   }
+  detail::validate_aggregate(model.max_total);
   if(!any_method3)throw OptimizationError(Status::no_feasible_solution,"ratio requires an available method3");
   return model;
 }

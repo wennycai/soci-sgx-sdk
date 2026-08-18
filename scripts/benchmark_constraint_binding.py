@@ -60,11 +60,13 @@ def write_tsv(handle, rows):
 
 
 def run(executable, path, rows, population, generations, seed, threshold,
-        no_exact=False):
+        no_exact=False, exact_only=False):
     command = [executable, path, str(rows), str(population), str(generations),
                str(seed), f"{threshold:.1f}"]
     if no_exact:
         command.append("--no-exact")
+    if exact_only:
+        command.append("--exact-only")
     output = subprocess.check_output(command, text=True)
     return json.loads(output)
 
@@ -90,8 +92,8 @@ def main():
             write_tsv(data, binding_rows(source, threshold))
             exact = {}
             for rows in (10, 20, 30):
-                exact[rows] = run(executable, data.name, rows, 2, 1, 0,
-                                  threshold)["exact_total_cost"]
+                exact[rows] = run(executable, data.name, rows, 0, 0, 0,
+                                  threshold, exact_only=True)["exact_total_cost"]
             small = []
             small_calls = [(executable, data.name, rows, 512, 3000, seed,
                             threshold, True)
@@ -171,6 +173,11 @@ def main():
                            if item["benchmark_generations"] == 3000]
             threshold_summary["large"]["410"]["improvement_rate_mean"] = statistics.mean(
                 (a - b) / a for a, b in zip(totals_1000, totals_3000))
+            serial = [run(executable, data.name, 410, 256, 1000, seed,
+                          threshold, no_exact=True)["runtime_seconds"]
+                      for seed in range(5)]
+            threshold_summary["large"]["410"]["serial_runtime_median_seconds"] = statistics.median(serial)
+            threshold_summary["large"]["410"]["serial_runtime_p95_seconds"] = nearest_rank(serial)
             summary[f"{threshold:.1f}"] = threshold_summary
         print(json.dumps(summary, separators=(",", ":")))
 

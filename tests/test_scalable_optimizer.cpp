@@ -68,7 +68,10 @@ int main() {
   assert(lex_exact.solution == std::vector<int>({1, 3}));
   assert(lex_ga.solution == lex_exact.solution);
 
-  const CostMatrix huge{{{{"999999999999999999999"}, std::nullopt, {"1"}}}};
+  const CostMatrix huge{
+      {{{"400000"}, {"400000"}, {"1"}}},
+      {{{"400000"}, {"400000"}, {"1"}}},
+  };
   bool exact_range = false;
   bool ga_range = false;
   try { soci::optimization::optimize_plain(huge, "0.5"); }

@@ -57,8 +57,7 @@ Encoded encode(const CostMatrix& matrix, const std::string& threshold) {
     out.costs.push_back(row);
   }
   // The largest linearized ratio term is SCALE * sum(cost).
-  if (max_total > kSafe || max_total * kScale > kSafe)
-    bad(Status::numeric_range_exceeded, "ratio intermediate exceeds safe plaintext range");
+  detail::validate_aggregate(max_total);
   return out;
 }
 

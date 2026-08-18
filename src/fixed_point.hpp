@@ -13,6 +13,12 @@ namespace detail {
 constexpr std::int64_t kFixedScale = 1'000'000;
 constexpr std::int64_t kFixedSafe = std::numeric_limits<std::int64_t>::max() / 16;
 
+inline void validate_aggregate(__int128 max_total) {
+  if (max_total < 0 || max_total * kFixedScale > kFixedSafe)
+    throw OptimizationError(Status::numeric_range_exceeded,
+                             "aggregate fixed-point range exceeded");
+}
+
 inline std::string trim_fixed(std::string value) {
   const auto ws = [](unsigned char c) { return std::isspace(c); };
   value.erase(value.begin(), std::find_if_not(value.begin(), value.end(), ws));
