@@ -43,7 +43,8 @@ endif()
 add_library(soci_sdk SHARED
   src/crypto.cpp src/serialization.cpp src/runtime.cpp src/c_api.cpp
   src/secure_ops.cpp src/predicate_engine.cpp src/optimization.cpp
-  src/encrypted_branch_bound.cpp src/lagrangian_relaxation.cpp)
+  src/scalable_optimizer.cpp src/encrypted_branch_bound.cpp
+  src/lagrangian_relaxation.cpp)
 target_include_directories(soci_sdk PUBLIC include PRIVATE src ${GMP_INCLUDE_DIR})
 target_link_libraries(soci_sdk PRIVATE ${GMPXX_LIBRARY} ${GMP_LIBRARY} OpenSSL::Crypto)
 target_compile_definitions(soci_sdk PRIVATE SOCI_SGX_MODE="${SOCI_SGX_MODE}"
@@ -60,6 +61,9 @@ add_executable(soci_cpp_example examples/cpp/basic.cpp)
 target_link_libraries(soci_cpp_example PRIVATE soci_sdk)
 add_executable(soci_benchmark benchmark/performance.cpp)
 target_link_libraries(soci_benchmark PRIVATE soci_sdk)
+add_executable(soci_scalable_optimizer_benchmark
+  benchmark/scalable_optimizer.cpp)
+target_link_libraries(soci_scalable_optimizer_benchmark PRIVATE soci_sdk)
 
 if(SOCI_BUILD_PYTHON)
   find_package(pybind11 CONFIG QUIET)
@@ -116,6 +120,11 @@ add_executable(soci_tests tests/test_sdk.cpp)
 target_link_libraries(soci_tests PRIVATE soci_sdk)
 target_compile_definitions(soci_tests PRIVATE
   SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS=$<BOOL:${SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS}>)
+add_executable(soci_scalable_optimizer_tests
+  tests/test_scalable_optimizer.cpp)
+target_link_libraries(soci_scalable_optimizer_tests PRIVATE soci_sdk)
+add_test(NAME soci_scalable_optimizer_tests
+  COMMAND soci_scalable_optimizer_tests)
 if(SOCI_SGX_MODE STREQUAL "OFF")
   add_test(NAME soci_tests COMMAND soci_tests)
   if(SOCI_ENABLE_EXPERIMENTAL_PROTOCOLS)
