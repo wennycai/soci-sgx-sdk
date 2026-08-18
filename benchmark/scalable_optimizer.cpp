@@ -31,7 +31,7 @@ soci::optimization::CostMatrix read_tsv(const std::string& path,
 }
 
 int main(int argc, char** argv) try {
-  if (argc != 6 && argc != 7)
+  if (argc < 6 || argc > 8)
     throw std::runtime_error(
         "usage: scalable-benchmark TSV ROWS POPULATION GENERATIONS SEED [THRESHOLD]");
   const auto rows = static_cast<std::size_t>(std::stoull(argv[2]));
@@ -40,7 +40,8 @@ int main(int argc, char** argv) try {
   config.generations = static_cast<std::size_t>(std::stoull(argv[4]));
   config.elitism = std::min<std::size_t>(8, config.population - 1);
   config.seed = std::stoull(argv[5]);
-  const std::string threshold = argc == 7 ? argv[6] : "0.5";
+  const std::string threshold = argc >= 7 ? argv[6] : "0.5";
+  const bool no_exact = argc == 8 && std::string(argv[7]) == "--no-exact";
   const auto costs = read_tsv(argv[1], rows);
   const auto ga = soci::optimization::ScalableOptimizer(config).optimize(
       costs, threshold);
@@ -66,7 +67,7 @@ int main(int argc, char** argv) try {
       std::cout << "null";
   }
   std::cout << ']';
-  if (rows <= 30) {
+  if (rows <= 30 && !no_exact) {
     const auto start = std::chrono::steady_clock::now();
     const auto exact = soci::optimization::optimize_plain(costs, threshold);
     const auto seconds = std::chrono::duration<double>(

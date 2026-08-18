@@ -9,6 +9,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 
 def read_xlsx(path):
@@ -40,13 +41,12 @@ def binding_rows(source, threshold):
             if alternatives and index % 3 != 0:
                 row[2] = min(row[2], min(alternatives) * 0.95)
         else:
-            available = [j for j, value in enumerate(row[:2])
-                         if value is not None]
-            # Missing method3 remains missing; scale only the cheapest
-            # available fallback so these rows do not overwhelm C3.
-            if available:
-                cheapest = min(available, key=lambda j: row[j])
-                row[cheapest] *= 0.001
+            # Missing method3 remains missing. Bound only the fallback costs
+            # on these rows; this is a warm-up cap, not multiplicative scaling.
+            # Long tails remain intact on rows that retain method3.
+            for method in (0, 1):
+                if row[method] is not None:
+                    row[method] = min(row[method], 45.0)
     return rows
 
 
@@ -59,16 +59,24 @@ def write_tsv(handle, rows):
     handle.flush()
 
 
-def run(executable, path, rows, population, generations, seed, threshold):
-    output = subprocess.check_output(
-        [executable, path, str(rows), str(population), str(generations),
-         str(seed), f"{threshold:.1f}"], text=True)
+def run(executable, path, rows, population, generations, seed, threshold,
+        no_exact=False):
+    command = [executable, path, str(rows), str(population), str(generations),
+               str(seed), f"{threshold:.1f}"]
+    if no_exact:
+        command.append("--no-exact")
+    output = subprocess.check_output(command, text=True)
     return json.loads(output)
 
 
 def nearest_rank(values, percentile=0.95):
     ordered = sorted(values)
     return ordered[math.ceil(len(ordered) * percentile) - 1]
+
+
+def parallel_runs(calls):
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        return list(pool.map(lambda call: run(*call), calls))
 
 
 def main():
@@ -80,12 +88,33 @@ def main():
         summary = {}
         for threshold in (0.3, 0.5, 0.7, 0.8):
             write_tsv(data, binding_rows(source, threshold))
-            small = [run(executable, data.name, rows, 512, 3000, seed,
-                         threshold)
-                     for rows in (10, 20, 30) for seed in range(30)]
-            large = [run(executable, data.name, rows, 256, 1000, seed,
-                         threshold)
-                     for rows in (100, 200, 410) for seed in range(30)]
+            exact = {}
+            for rows in (10, 20, 30):
+                exact[rows] = run(executable, data.name, rows, 2, 1, 0,
+                                  threshold)["exact_total_cost"]
+            small = []
+            small_calls = [(executable, data.name, rows, 512, 3000, seed,
+                            threshold, True)
+                           for rows in (10, 20, 30) for seed in range(30)]
+            for item in parallel_runs(small_calls):
+                rows = item["rows"]
+                item["exact_total_cost"] = exact[rows]
+                item["optimality_gap"] = ((item["total_cost"] - exact[rows]) /
+                                           exact[rows])
+                small.append(item)
+            large_calls = [(executable, data.name, rows, 256, 1000, seed,
+                            threshold, True)
+                           for rows in (100, 200) for seed in range(30)]
+            large_calls += [(executable, data.name, 410, 256, generations,
+                             seed, threshold, True)
+                            for generations in (1000, 3000)
+                            for seed in range(30)]
+            large = []
+            for item in parallel_runs(large_calls):
+                if item["rows"] == 410:
+                    generations = item["generations"]
+                    item["benchmark_generations"] = generations
+                large.append(item)
             threshold_summary = {"small": {}, "large": {}}
             for rows in (10, 20, 30):
                 values = [item for item in small if item["rows"] == rows]
@@ -93,9 +122,10 @@ def main():
                 threshold_summary["small"][str(rows)] = {
                     "mean_gap": statistics.mean(gaps),
                     "p95_gap": nearest_rank(gaps),
-                    "best_generations": [item["generation"] for item in values],
+                    "best_generation_min": min(item["generation"] for item in values),
+                    "best_generation_max": max(item["generation"] for item in values),
                 }
-            for rows in (100, 200, 410):
+            for rows in (100, 200):
                 values = [item for item in large if item["rows"] == rows]
                 totals = [item["total_cost"] for item in values]
                 threshold_summary["large"][str(rows)] = {
@@ -110,8 +140,37 @@ def main():
                         item["repair_success_rate"] for item in values),
                     "mean_final_feasible_rate": statistics.mean(
                         item["feasible_rate"] for item in values),
-                    "best_generations": [item["generation"] for item in values],
+                    "best_generation_min": min(item["generation"] for item in values),
+                    "best_generation_max": max(item["generation"] for item in values),
                 }
+            values = [item for item in large if item["rows"] == 410]
+            threshold_summary["large"]["410"] = {}
+            for generations in (1000, 3000):
+                group = [item for item in values
+                         if item["benchmark_generations"] == generations]
+                totals = [item["total_cost"] for item in group]
+                threshold_summary["large"]["410"][str(generations)] = {
+                    "runtime_min_seconds": min(item["runtime_seconds"]
+                                                for item in group),
+                    "runtime_max_seconds": max(item["runtime_seconds"]
+                                                for item in group),
+                    "mean_total": statistics.mean(totals),
+                    "total_spread": max(totals) - min(totals),
+                    "mean_pre_repair_feasible_rate": statistics.mean(
+                        item["pre_repair_feasible_rate"] for item in group),
+                    "mean_repair_success_rate": statistics.mean(
+                        item["repair_success_rate"] for item in group),
+                    "mean_final_feasible_rate": statistics.mean(
+                        item["feasible_rate"] for item in group),
+                    "best_generation_min": min(item["generation"] for item in group),
+                    "best_generation_max": max(item["generation"] for item in group),
+                }
+            totals_1000 = [item["total_cost"] for item in values
+                           if item["benchmark_generations"] == 1000]
+            totals_3000 = [item["total_cost"] for item in values
+                           if item["benchmark_generations"] == 3000]
+            threshold_summary["large"]["410"]["improvement_rate_mean"] = statistics.mean(
+                (a - b) / a for a, b in zip(totals_1000, totals_3000))
             summary[f"{threshold:.1f}"] = threshold_summary
         print(json.dumps(summary, separators=(",", ":")))
 
