@@ -38,10 +38,15 @@ reference 只验证最终 total、C12 和 solution 一致性；页面展示的�
 - 双通道模式：输入成本和阈值，选择 `current_suffix` 或 `lagrangian`，每次只执行
   一种 confidential strategy，并与独立 plaintext oracle 核对。
 - 三方角色模式：
-  - A（数据使用方）提交公开阈值和策略需求；
-  - C（数据拥有方）上传 `.xlsx`，加密并导出 `.enc`；
-  - B（密态计算服务方）导入密文并执行优化，再将结果 `.enc` 返回；
-  - C 执行最终授权，结果交付 A。
+  - A（数据使用方）发起任务（公开阈值和策略）；
+  - C（数据拥有方）接收任务，上传 `.xlsx`，加密并导出 `.enc`；
+  - A 接收密文并委托 B；B（密态计算服务方）导入委托并执行优化，再将密文
+    结果 `.enc` 返回 A；
+  - A 将密文结果提交给 C；C 执行最终授权并导出授权结果；
+  - A 确认接收授权结果后流程完成。
+
+示例数据：`sample-costs.xlsx`（10 行）和 `sample-costs-410.xlsx`（410 行长
+任务场景）。Demo 适配层最多支持 512 行。
 
 页面展示真实 Paillier 密文片段，以及 `visited_nodes`、`pruned_nodes`、
 `candidate_count`、`prune_predicates`、`accept_predicates` 和

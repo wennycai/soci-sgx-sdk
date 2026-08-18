@@ -117,7 +117,7 @@ class Bridge {
 
  private:
   static secure::NumericDomain domain() {
-    return {1'000'000, 64, 36, 48, 64, 64};
+    return {1'000'000, 512, 36, 48, 66, 66};
   }
   std::string mode_;
   DemoAuthorizer authorizer_;

@@ -17,8 +17,8 @@
 
   <main class="flow-main">
     <section class="hero">
-      <div><p class="eyebrow">CONFIDENTIAL OPTIMIZATION WORKFLOW</p><h1>三方密态优化<br><em>业务流程</em></h1></div>
-      <div class="hero-copy"><p>A 发起任务，C 加密原始成本，B 仅对密文执行 Phase 1–5 confidential optimization，C 授权解密后 A 获得最终结果。</p><div class="legend"><span><i class="dot raw"></i>明文仅 C 可见</span><span><i class="dot cipher"></i>B 仅见密文</span><span><i class="dot enclave"></i>仅最终授权解密</span></div></div>
+      <div><p class="eyebrow">PAILLIER ENCRYPTED OPTIMIZATION</p><h1>基于Paillier加密的<br><em>本地化率优化工具</em></h1></div>
+      <div class="hero-copy"><p><b class="mode-tag">三方角色模式 · 业务流程</b>A 发起任务，C 加密原始成本，B 仅对密文执行 Phase 1–5 confidential optimization，C 授权解密后由 A 确认接收最终结果。</p><div class="legend"><span><i class="dot raw"></i>明文仅 C 可见</span><span><i class="dot cipher"></i>B 仅见密文</span><span><i class="dot enclave"></i>仅最终授权解密</span></div></div>
     </section>
 
     <nav class="biz-steps" id="bizSteps" aria-label="业务流程进度">
@@ -67,8 +67,11 @@
 
       <article class="flow-card locked" id="aFinalCard">
         <div class="flow-card-head"><span class="big-step">A4</span><div><p class="step-label">最终结果 · 任务完成</p><h2>接收 C 授权的最终结果</h2></div><span class="stage-state">等待 C 授权</span></div>
-        <div class="dropzone compact" id="aFinalDrop"><span class="file-glyph">JSON</span><h3>导入 C 的授权结果文件</h3><p>本页内已自动接收时可跳过</p><input id="aFinalFile" type="file" accept=".json" hidden><button class="secondary-button">选择文件</button></div>
+        <p class="privacy-note">C 完成授权后，由 A 确认接收或导入授权结果文件，业务流程才正式完成。</p>
+        <div id="aFinalNotice" class="package-check hidden"></div>
+        <div class="dropzone compact" id="aFinalDrop"><span class="file-glyph">JSON</span><h3>导入 C 的授权结果文件</h3><p>本页内已签发时可跳过，直接确认接收</p><input id="aFinalFile" type="file" accept=".json" hidden><button class="secondary-button">选择文件</button></div>
         <div id="aFinalResult" class="decrypted-result hidden"></div>
+        <button id="aConfirm" class="primary-action hidden">确认接收最终结果 <b>✓</b></button>
       </article>
     </section>
 
@@ -80,7 +83,7 @@
         <div id="cTaskMeta" class="file-meta hidden"></div>
         <p class="privacy-note">选择 `.xlsx`。加密后 A/B 只能得到不可读密文，明文不会离开本面板。</p>
         <div class="dropzone" id="cPlainDrop"><span class="file-glyph">XLSX</span><h3>选择明文成本文件</h3><input id="cPlainFile" type="file" accept=".xlsx" hidden><button class="secondary-button">选择文件</button></div>
-        <div class="sample-line"><span>标准模板</span><a href="sample-costs.xlsx" download>下载示例数据 ↓</a></div>
+        <div class="sample-line"><span>标准模板</span><span><a href="sample-costs.xlsx" download>10 行示例 ↓</a> · <a href="sample-costs-410.xlsx" download>410 行长任务示例 ↓</a></span></div>
         <div id="cPlainMeta" class="file-meta hidden"></div>
         <button id="cEncrypt" class="primary-action" disabled>按任务加密并导出密文 <b>↓</b></button>
       </article>

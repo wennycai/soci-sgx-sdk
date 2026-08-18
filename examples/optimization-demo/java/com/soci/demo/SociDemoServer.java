@@ -82,7 +82,7 @@ public final class SociDemoServer implements AutoCloseable {
       ids[i-1]=cells[0];
       for(int j=0;j<3;j++)if(!cells[j+1].isEmpty())costs[i-1][j]=fixed(cells[j+1]);
     }
-    if(ids.length>64)throw new IllegalArgumentException("Demo supports at most 64 rows");
+    if(ids.length>512)throw new IllegalArgumentException("Demo supports at most 512 rows");
     return new Input(ids,costs,Math.round(threshold*1_000_000),strategy,grid);
   }
   private byte[][][] encrypt(Long[][] costs){
