@@ -182,11 +182,37 @@ else()
   set_tests_properties(soci_sgx_threshold_correctness
     soci_threshold_secure_ops_integration PROPERTIES TIMEOUT 600)
   if(SOCI_SGX_MODE STREQUAL "SIM")
+    # PEGA is a SIM-only development/profiling target.  Keeping it here means
+    # OFF and HW source/target paths are unchanged.
+    add_library(soci_confidential_scalable_optimizer STATIC
+      src/confidential_scalable_optimizer.cpp)
+    target_include_directories(soci_confidential_scalable_optimizer PRIVATE
+      ${CMAKE_SOURCE_DIR}/include)
+    target_link_libraries(soci_confidential_scalable_optimizer PUBLIC
+      soci_threshold_optimizer)
+    add_executable(soci_confidential_scalable_optimizer_test
+      tests/test_confidential_scalable_optimizer.cpp)
+    target_include_directories(soci_confidential_scalable_optimizer_test PRIVATE
+      ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/include)
+    target_link_directories(soci_confidential_scalable_optimizer_test PRIVATE
+      "${SGX_LIBRARY_DIR}")
+    target_link_libraries(soci_confidential_scalable_optimizer_test PRIVATE
+      soci_confidential_scalable_optimizer)
+    add_dependencies(soci_confidential_scalable_optimizer_test
+      soci_threshold_runtime)
+    add_test(NAME soci_confidential_scalable_optimizer_sim
+      COMMAND soci_confidential_scalable_optimizer_test
+        "${CMAKE_BINARY_DIR}/soci_provisioning_enclave.signed.so"
+        "${CMAKE_BINARY_DIR}/soci_cp_enclave.signed.so"
+        "${CMAKE_BINARY_DIR}/soci_csp_enclave.signed.so" "${SOCI_SGX_MODE}"
+        "$<TARGET_FILE:soci_threshold_runtime>")
     set_tests_properties(
       soci_sgx_cp_lifecycle soci_sgx_csp_lifecycle soci_sgx_crypto_correctness
       soci_sgx_threshold_correctness
-      soci_threshold_secure_ops_integration
+      soci_threshold_secure_ops_integration soci_confidential_scalable_optimizer_sim
       PROPERTIES ENVIRONMENT "LD_LIBRARY_PATH=$ENV{SGX_SDK}/lib64")
+    set_tests_properties(soci_confidential_scalable_optimizer_sim PROPERTIES
+      TIMEOUT 600)
   endif()
 endif()
 
