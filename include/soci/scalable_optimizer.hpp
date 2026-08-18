@@ -23,6 +23,8 @@ struct ScalableOptimizationResult : OptimizationResult {
   std::size_t generation{};
   double runtime_seconds{};
   double feasible_rate{};
+  double pre_repair_feasible_rate{};
+  double repair_success_rate{};
   std::vector<double> convergence_costs;
 };
 

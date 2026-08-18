@@ -1,4 +1,5 @@
 #include "soci/scalable_optimizer.hpp"
+#include "fixed_point.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -13,16 +14,6 @@ namespace {
 constexpr std::int64_t kScale=1'000'000;
 using Clock=std::chrono::steady_clock;
 
-std::int64_t fixed(const std::string& text,bool threshold=false){
-  std::size_t used=0;const long double value=std::stold(text,&used);
-  if(used!=text.size()||!std::isfinite(value)||value<0||
-     (threshold&&value>=1))
-    throw OptimizationError(Status::invalid_argument,"invalid GA decimal");
-  const auto scaled=std::llround(value*kScale);
-  if(std::fabs(value*kScale-scaled)>1e-7L)
-    throw OptimizationError(Status::invalid_argument,"GA decimals support six places");
-  return scaled;
-}
 
 struct Model {
   std::vector<std::array<std::optional<std::int64_t>,3>> costs;
@@ -33,13 +24,13 @@ struct Model {
 
 Model encode(const CostMatrix& input,const std::string& threshold){
   if(input.empty())throw OptimizationError(Status::invalid_argument,"cost matrix must not be empty");
-  Model model;model.threshold=fixed(threshold,true);model.costs.reserve(input.size());
+  Model model;model.threshold=detail::parse_fixed_point(threshold,true);model.costs.reserve(input.size());
   model.available.reserve(input.size());bool any_method3=false;
   for(const auto&source:input){
     std::array<std::optional<std::int64_t>,3> row;std::vector<std::uint8_t> available;
     std::int64_t maximum=0;
     for(std::uint8_t method=0;method<3;++method)if(source[method]){
-      row[method]=fixed(*source[method]);available.push_back(method);
+      row[method]=detail::parse_fixed_point(*source[method],false);available.push_back(method);
       maximum=std::max(maximum,*row[method]);if(method==2)any_method3=true;
     }
     if(available.empty())throw OptimizationError(Status::no_feasible_solution,"each material needs an available method");
@@ -69,9 +60,16 @@ void evaluate(const Model&model,Individual&x,long double penalty){
   x.fitness=static_cast<long double>(x.total)+(x.feasible?0:penalty*(1+violation+missing_c3));
 }
 
-bool order(const Individual&a,const Individual&b){
+bool order(const Model&model,const Individual&a,const Individual&b){
   if(a.feasible!=b.feasible)return a.feasible;
-  if(a.fitness!=b.fitness)return a.fitness<b.fitness;
+  if(a.feasible){
+    if(a.total!=b.total)return a.total<b.total;
+    // Both linear values are non-negative. Compare (ratio - T) exactly,
+    // matching Exact B&B's fixed-point rational tie-break.
+    const auto lhs=a.linear*static_cast<__int128>(b.total);
+    const auto rhs=b.linear*static_cast<__int128>(a.total);
+    if(lhs!=rhs)return lhs<rhs;
+  }else if(a.fitness!=b.fitness)return a.fitness<b.fitness;
   return a.genes<b.genes;
 }
 
@@ -130,28 +128,36 @@ ScalableOptimizationResult ScalableOptimizer::optimize(
   std::mt19937_64 rng(config_.seed);std::uniform_real_distribution<double> unit(0,1);
   const long double penalty=(static_cast<long double>(model.max_total)+1)*
                             config_.infeasible_penalty_multiplier;
-  auto random_individual=[&]{Individual x;x.genes.resize(model.costs.size());for(std::size_t i=0;i<x.genes.size();++i){const auto&available=model.available[i];x.genes[i]=available[rng()%available.size()];}repair(model,x,penalty);evaluate(model,x,penalty);return x;};
+  std::size_t candidates=0,pre_repair_feasible=0,repair_attempts=0,repair_successes=0;
+  auto prepare=[&](Individual&x){
+    evaluate(model,x,penalty);++candidates;
+    if(x.feasible){++pre_repair_feasible;return;}
+    ++repair_attempts;
+    if(repair(model,x,penalty))++repair_successes;
+    evaluate(model,x,penalty);
+  };
+  auto random_individual=[&]{Individual x;x.genes.resize(model.costs.size());for(std::size_t i=0;i<x.genes.size();++i){const auto&available=model.available[i];x.genes[i]=available[rng()%available.size()];}prepare(x);return x;};
   std::vector<Individual> population;population.reserve(config_.population);
   Individual cheapest;cheapest.genes.resize(model.costs.size());
   for(std::size_t i=0;i<model.costs.size();++i)cheapest.genes[i]=*std::min_element(model.available[i].begin(),model.available[i].end(),[&](auto a,auto b){return *model.costs[i][a]<*model.costs[i][b];});
-  repair(model,cheapest,penalty);evaluate(model,cheapest,penalty);population.push_back(cheapest);
+  prepare(cheapest);population.push_back(cheapest);
   while(population.size()<config_.population)population.push_back(random_individual());
   Individual best;bool have_best=false;std::size_t best_generation=0;
   std::vector<double> convergence(config_.generations+1,
                                   std::numeric_limits<double>::quiet_NaN());
-  auto retain_best=[&](std::size_t generation){for(const auto&x:population)if(x.feasible&&(!have_best||order(x,best))){best=x;have_best=true;best_generation=generation;}
+  auto retain_best=[&](std::size_t generation){for(const auto&x:population)if(x.feasible&&(!have_best||order(model,x,best))){best=x;have_best=true;best_generation=generation;}
     if(have_best)convergence[generation]=static_cast<double>(best.total)/kScale;};
   retain_best(0);
   for(std::size_t generation=1;generation<=config_.generations;++generation){
-    std::sort(population.begin(),population.end(),order);std::vector<Individual> next;
+    std::sort(population.begin(),population.end(),[&](const auto&a,const auto&b){return order(model,a,b);});std::vector<Individual> next;
     next.reserve(config_.population);for(std::size_t i=0;i<config_.elitism;++i)next.push_back(population[i]);
-    auto select=[&]()->const Individual&{std::size_t winner=rng()%population.size();for(std::size_t k=1;k<config_.tournament_size;++k){const auto challenger=rng()%population.size();if(order(population[challenger],population[winner]))winner=challenger;}return population[winner];};
-    while(next.size()<config_.population){Individual child=select();const auto&other=select();if(unit(rng)<config_.crossover_rate)for(std::size_t i=0;i<child.genes.size();++i)if(rng()&1)child.genes[i]=other.genes[i];for(std::size_t i=0;i<child.genes.size();++i)if(unit(rng)<config_.mutation_rate&&model.available[i].size()>1){auto method=model.available[i][rng()%model.available[i].size()];if(method==child.genes[i])method=model.available[i][(std::find(model.available[i].begin(),model.available[i].end(),method)-model.available[i].begin()+1)%model.available[i].size()];child.genes[i]=method;}repair(model,child,penalty);evaluate(model,child,penalty);next.push_back(std::move(child));}
+    auto select=[&]()->const Individual&{std::size_t winner=rng()%population.size();for(std::size_t k=1;k<config_.tournament_size;++k){const auto challenger=rng()%population.size();if(order(model,population[challenger],population[winner]))winner=challenger;}return population[winner];};
+    while(next.size()<config_.population){Individual child=select();const auto&other=select();if(unit(rng)<config_.crossover_rate)for(std::size_t i=0;i<child.genes.size();++i)if(rng()&1)child.genes[i]=other.genes[i];for(std::size_t i=0;i<child.genes.size();++i)if(unit(rng)<config_.mutation_rate&&model.available[i].size()>1){auto method=model.available[i][rng()%model.available[i].size()];if(method==child.genes[i])method=model.available[i][(std::find(model.available[i].begin(),model.available[i].end(),method)-model.available[i].begin()+1)%model.available[i].size()];child.genes[i]=method;}prepare(child);next.push_back(std::move(child));}
     population=std::move(next);retain_best(generation);
   }
   if(!have_best)throw OptimizationError(Status::no_feasible_solution,"GA found no feasible assignment");
   const auto feasible=std::count_if(population.begin(),population.end(),[](const auto&x){return x.feasible;});
-  ScalableOptimizationResult result;result.solution.reserve(best.genes.size());for(auto method:best.genes)result.solution.push_back(method+1);result.total_cost=static_cast<double>(best.total)/kScale;result.ratio=static_cast<double>(best.c12)/static_cast<double>(best.total);result.generation=best_generation;result.feasible_rate=static_cast<double>(feasible)/population.size();result.runtime_seconds=std::chrono::duration<double>(Clock::now()-start).count();result.convergence_costs=std::move(convergence);return result;
+  ScalableOptimizationResult result;result.solution.reserve(best.genes.size());for(auto method:best.genes)result.solution.push_back(method+1);result.total_cost=static_cast<double>(best.total)/kScale;result.ratio=static_cast<double>(best.c12)/static_cast<double>(best.total);result.generation=best_generation;result.feasible_rate=static_cast<double>(feasible)/population.size();result.pre_repair_feasible_rate=static_cast<double>(pre_repair_feasible)/candidates;result.repair_success_rate=repair_attempts==0?1.0:static_cast<double>(repair_successes)/repair_attempts;result.runtime_seconds=std::chrono::duration<double>(Clock::now()-start).count();result.convergence_costs=std::move(convergence);return result;
 }
 
 }  // namespace soci::optimization

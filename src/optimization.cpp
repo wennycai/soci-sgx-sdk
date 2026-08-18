@@ -1,4 +1,5 @@
 #include "soci/optimization.hpp"
+#include "fixed_point.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -31,38 +32,7 @@ std::string trim(std::string value) {
 }
 
 int64_t decimal(const std::string& input, bool threshold) {
-  std::string s = trim(input);
-  if (s.empty() || s[0] == '-') bad(Status::invalid_argument, "negative or empty decimal");
-  if (s[0] == '+') s.erase(0, 1);
-  auto dot = s.find('.');
-  if (dot != std::string::npos && s.find('.', dot + 1) != std::string::npos)
-    bad(Status::invalid_argument, "invalid decimal");
-  std::string whole = dot == std::string::npos ? s : s.substr(0, dot);
-  std::string frac = dot == std::string::npos ? "" : s.substr(dot + 1);
-  if (whole.empty()) whole = "0";
-  auto digits = [](const std::string& v) {
-    return std::all_of(v.begin(), v.end(), [](unsigned char c) { return std::isdigit(c); });
-  };
-  if (!digits(whole) || !digits(frac)) bad(Status::invalid_argument, "invalid decimal");
-  // Fixed point values have six decimal places. Extra zeroes are accepted;
-  // non-zero discarded digits would silently change the optimization model.
-  if (frac.size() > 6) {
-    if (std::any_of(frac.begin() + 6, frac.end(), [](char c) { return c != '0'; }))
-      bad(Status::invalid_argument, "more than six decimal places");
-    frac.resize(6);
-  }
-  frac.append(6 - frac.size(), '0');
-  try {
-    size_t used = 0;
-    long long w = std::stoll(whole, &used);
-    if (used != whole.size() || w > (kSafe - std::stoll(frac)) / kScale)
-      bad(Status::numeric_range_exceeded, "fixed-point value exceeds safe range");
-    int64_t result = w * kScale + std::stoll(frac);
-    if (threshold && result >= kScale)
-      bad(Status::invalid_argument, "ratio_threshold must satisfy 0 <= T < 1");
-    return result;
-  } catch (const OptimizationError&) { throw; }
-  catch (...) { bad(Status::numeric_range_exceeded, "fixed-point value exceeds safe range"); }
+  return detail::parse_fixed_point(input, threshold);
 }
 
 Encoded encode(const CostMatrix& matrix, const std::string& threshold) {
