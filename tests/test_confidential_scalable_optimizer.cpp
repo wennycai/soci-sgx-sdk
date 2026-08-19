@@ -72,7 +72,7 @@ class LocalSecureOps final : public soci::secure::SecureOps {
   }
 
  private:
-  soci::secure::NumericDomain domain_{100, 16, 8, 12, 24, 48};
+  soci::secure::NumericDomain domain_{100, 64, 8, 16, 28, 56};
 };
 
 class ThresholdHarness {
@@ -239,6 +239,12 @@ std::vector<std::uint8_t> localSolution(const std::vector<Row>& plain,
   require(ops.value(encrypted.total_cost) ==
               static_cast<std::int64_t>(expected.total_cost),
           "plaintext/encrypted GA total mismatch");
+  std::cout << "PEGA_LOCAL rows=" << plain.size()
+            << " add=" << encrypted.stats.run.add
+            << " scalar=" << encrypted.stats.run.scalar_mul
+            << " smul=" << encrypted.stats.run.secure_mul
+            << " scmp=" << encrypted.stats.run.secure_compare
+            << " select=" << encrypted.stats.run.secure_select << '\n';
   return solution;
 }
 
@@ -270,6 +276,8 @@ int main(int argc, char** argv) {
     // Missing methods and exact ratio/lexical ties retain the lower method.
     require(localSolution({Row{1, 1, 3}, Row{3, 3, 1}}).size() == 2,
             "ratio/lex differential failed");
+    std::vector<Row> trend(30, Row{std::nullopt, 1, 2});
+    require(localSolution(trend).size() == 30, "30-row differential failed");
 
     // One real threshold run proves the existing CP/CSP SIM flow.  Keeping
     // the remaining matrix differential local prevents an unbatched MVP test
@@ -285,6 +293,8 @@ int main(int argc, char** argv) {
               << " run_scmp=" << counts.run.secure_compare
               << " run_smul=" << counts.run.secure_mul
               << " run_select=" << counts.run.secure_select
+              << " run_smul_dispatch=" << counts.run.secure_mul_dispatches
+              << " run_scmp_dispatch=" << counts.run.secure_compare_dispatches
               << " candidate_add=" << counts.per_candidate.add
               << " candidate_scalar_mul=" << counts.per_candidate.scalar_mul
               << " candidate_scmp=" << counts.per_candidate.secure_compare
@@ -303,7 +313,11 @@ int main(int argc, char** argv) {
               << " estimate_smul="
               << counts.extrapolated_256x1000.secure_mul
               << " estimate_select="
-              << counts.extrapolated_256x1000.secure_select << '\n';
+              << counts.extrapolated_256x1000.secure_select
+              << " estimate410_smul="
+              << counts.extrapolated_410x1000.secure_mul
+              << " estimate410_scmp="
+              << counts.extrapolated_410x1000.secure_compare << '\n';
     std::cout << "confidential scalable optimizer SIM tests passed\n";
     return 0;
   } catch (const std::exception& error) {

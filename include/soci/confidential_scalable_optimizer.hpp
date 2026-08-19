@@ -33,6 +33,8 @@ struct ConfidentialScalableOperationCounts {
   std::uint64_t secure_mul{};
   std::uint64_t secure_compare{};
   std::uint64_t secure_select{};
+  std::uint64_t secure_mul_dispatches{};
+  std::uint64_t secure_compare_dispatches{};
 };
 
 struct ConfidentialScalableOptimizationStats {
@@ -44,6 +46,13 @@ struct ConfidentialScalableOptimizationStats {
   // Public-dimension estimate for a 256-population, 1000-generation run.
   // This is a planning estimate; it does not execute that run.
   ConfidentialScalableOperationCounts extrapolated_256x1000;
+  ConfidentialScalableOperationCounts extrapolated_410x1000;
+  std::size_t rows{};
+  std::size_t available_methods{};
+  std::size_t population{};
+  std::size_t generations{};
+  std::size_t elitism{};
+  std::size_t tournament_size{};
   std::size_t repair_rounds{};
 };
 
