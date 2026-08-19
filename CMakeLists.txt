@@ -64,6 +64,7 @@ target_link_libraries(soci_benchmark PRIVATE soci_sdk)
 add_executable(soci_scalable_optimizer_benchmark
   benchmark/scalable_optimizer.cpp)
 target_link_libraries(soci_scalable_optimizer_benchmark PRIVATE soci_sdk)
+add_executable(soci_cbc_plaintext_benchmark benchmark/cbc_baseline.cpp)
 
 if(SOCI_BUILD_PYTHON)
   find_package(pybind11 CONFIG QUIET)
