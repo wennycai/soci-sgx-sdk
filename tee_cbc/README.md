@@ -48,7 +48,18 @@ secret-provisioning service.
 
 ## Docker
 
-`tee_cbc/Dockerfile` builds the plaintext benchmark and CBC dependencies. A
-Gramine package/image and SGX device/DCAP passthrough must be supplied by the
-deployment environment; the repository does not silently fall back to OFF or
-to the existing SIM path.
+`tee_cbc/Dockerfile` is a standalone image (Gramine + CBC + the benchmark,
+built with `SOCI_SGX_MODE=OFF`). It is fully decoupled from the core SDK
+build and the SIM CI image, and does not depend on any pre-existing local
+image. The Gramine-direct regression runs via its own compose file, outside
+the default OFF/SIM CI:
+
+```bash
+docker compose -f docker/compose.tee-cbc.yaml up --build \
+  --abort-on-container-exit --exit-code-from tee_cbc_direct
+docker compose -f docker/compose.tee-cbc.yaml down --volumes
+```
+
+SGX device/DCAP passthrough must be supplied by the deployment environment;
+the repository does not silently fall back to OFF or to the existing SIM
+path.

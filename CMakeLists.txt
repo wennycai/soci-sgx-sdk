@@ -64,7 +64,11 @@ target_link_libraries(soci_benchmark PRIVATE soci_sdk)
 add_executable(soci_scalable_optimizer_benchmark
   benchmark/scalable_optimizer.cpp)
 target_link_libraries(soci_scalable_optimizer_benchmark PRIVATE soci_sdk)
-add_executable(soci_cbc_plaintext_benchmark benchmark/cbc_baseline.cpp)
+# Benchmark-only CBC plaintext baseline: standalone numeric handling, no
+# soci_sdk linkage, excluded from the default build/test path.  Build
+# explicitly with `--target soci_cbc_plaintext_benchmark` (used by tee_cbc/).
+add_executable(soci_cbc_plaintext_benchmark EXCLUDE_FROM_ALL
+  benchmark/cbc_baseline.cpp)
 
 if(SOCI_BUILD_PYTHON)
   find_package(pybind11 CONFIG QUIET)

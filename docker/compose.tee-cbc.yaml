@@ -1,0 +1,13 @@
+# TEE+CBC Gramine-direct regression, decoupled from the core SIM CI.
+# Run explicitly with:
+#   docker compose -f docker/compose.tee-cbc.yaml up --build \
+#     --abort-on-container-exit --exit-code-from tee_cbc_direct
+# The default SIM CI (docker/compose.sim.yaml) never builds or runs this.
+services:
+  tee_cbc_direct:
+    build: {context: .., dockerfile: tee_cbc/Dockerfile}
+    environment:
+      CBC_BIN: /usr/bin/cbc
+    security_opt:
+      - seccomp=unconfined
+    command: ["bash","-lc","scripts/test_tee_cbc_direct.sh"]

@@ -11,12 +11,7 @@
 namespace soci::optimization {
 namespace detail {
 constexpr std::int64_t kFixedScale = 1'000'000;
-// Plaintext solvers keep per-value fixed-point operands in int64_t, but their
-// aggregate/intermediate arithmetic is widened to __int128.  The old /16
-// headroom rejected the raw 410-row benchmark before either solver ran.
-// Secure/SIM numeric-domain checks live in the protocol layer and are
-// intentionally unaffected by this plaintext-only bound.
-constexpr std::int64_t kFixedSafe = std::numeric_limits<std::int64_t>::max();
+constexpr std::int64_t kFixedSafe = std::numeric_limits<std::int64_t>::max() / 16;
 
 inline void validate_aggregate(__int128 max_total) {
   if (max_total < 0 || max_total * kFixedScale > kFixedSafe)
