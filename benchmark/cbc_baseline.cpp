@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cmath>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -69,10 +70,13 @@ int main(int argc, char** argv) try {
     for (std::size_t i = 0; i < rows.size(); ++i)
       for (int j = 0; j < 3; ++j) if (rows[i].cost[j])
         out << " + " << *rows[i].cost[j] << " x_" << i << '_' << j;
-    out << "\nSubject To\n one:";
-    for (std::size_t i = 0; i < rows.size(); ++i)
+    out << "\nSubject To\n";
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+      out << " one_" << i << ":";
       for (int j = 0; j < 3; ++j) if (rows[i].cost[j]) out << " + x_" << i << '_' << j;
-    out << " = " << rows.size() << "\n ratio:";
+      out << " = 1\n";
+    }
+    out << " ratio:";
     for (std::size_t i = 0; i < rows.size(); ++i) for (int j = 0; j < 3; ++j)
       if (rows[i].cost[j]) out << " + " << ((j < 2 ? 1.0 - threshold : -threshold) * *rows[i].cost[j]) << " x_" << i << '_' << j;
     out << " >= 0\nBinary\n";
@@ -86,20 +90,49 @@ int main(int argc, char** argv) try {
   const int rc = std::system(command.c_str());
   double objective = 0;
   bool found_objective = false;
+  std::vector<int> selected(rows.size(), -1);
   std::string line;
   std::ifstream input(sol);
-  if (!input) std::cerr << "CBC solution missing: " << sol << "\n";
+  if (!input) throw std::runtime_error("CBC solution missing");
   while (std::getline(input, line)) {
     const auto marker = line.find("objective value");
-    if (marker != std::string::npos)
-      objective = std::stod(line.substr(marker + 15)), found_objective = true;
+    if (marker != std::string::npos) {
+      objective = std::stod(line.substr(marker + 15));
+      found_objective = true;
+      continue;
+    }
+    std::stringstream variable(line);
+    std::string index, name;
+    double value = 0;
+    if (!(variable >> index >> name >> value) || name.rfind("x_", 0) != 0 || value < 0.5)
+      continue;
+    std::size_t split = name.find('_', 2);
+    if (split == std::string::npos) continue;
+    const auto row = std::stoull(name.substr(2, split - 2));
+    const auto method = std::stoi(name.substr(split + 1));
+    if (row >= rows.size() || method < 0 || method >= 3 || selected[row] != -1)
+      throw std::runtime_error("CBC solution has invalid or duplicate selection");
+    selected[row] = method;
   }
+  if (rc != 0 || !found_objective) throw std::runtime_error("CBC did not return an objective");
+  long double lhs = 0, rhs = 0;
+  double recomputed_total = 0;
+  for (std::size_t i = 0; i < rows.size(); ++i) {
+    if (selected[i] < 0 || !rows[i].cost[selected[i]])
+      throw std::runtime_error("CBC solution violates one-hot row selection");
+    const double cost = *rows[i].cost[selected[i]];
+    recomputed_total += cost;
+    if (selected[i] < 2) lhs += cost; else rhs += cost;
+  }
+  if (rhs <= 0 || lhs * (1.0L - threshold) + 1e-9L < rhs * threshold)
+    throw std::runtime_error("CBC solution violates ratio threshold");
+  const double tolerance = 1e-6 * std::max(1.0, std::abs(objective));
+  if (std::abs(recomputed_total - objective) > tolerance)
+    throw std::runtime_error("CBC objective does not match recomputed total");
   std::remove(lp.c_str()); std::remove(sol.c_str());
   const auto seconds = std::chrono::duration<double>(
       std::chrono::steady_clock::now() - start).count();
-  std::cout << std::setprecision(12) << "{\"method\":\"cbc\",\"completed\":"
-            << (rc == 0 && found_objective ? "true" : "false")
-            << ",\"total_cost\":" << objective
-            << ",\"runtime_seconds\":" << seconds << "}\n";
-  return rc == 0 ? 0 : 1;
+  std::cout << std::setprecision(12) << "{\"method\":\"cbc\",\"completed\":true,\"verified\":true,\"total_cost\":"
+            << recomputed_total << ",\"runtime_seconds\":" << seconds << "}\n";
+  return 0;
 } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
