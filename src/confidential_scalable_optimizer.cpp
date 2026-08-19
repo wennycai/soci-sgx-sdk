@@ -64,8 +64,17 @@ class CountedOps {
   std::vector<secure::Ciphertext> mulBatch(
       const std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>>& items) {
     counts_.secure_mul += items.size();
-    ++counts_.secure_mul_dispatches;
-    return ops_.secureMulBatch(items);
+    std::vector<secure::Ciphertext> output;
+    output.reserve(items.size());
+    for (std::size_t offset = 0; offset < items.size(); offset += 32) {
+      const auto end = std::min(items.size(), offset + std::size_t{32});
+      std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>> chunk(
+          items.begin() + offset, items.begin() + end);
+      ++counts_.secure_mul_dispatches;
+      auto values = ops_.secureMulBatch(chunk);
+      output.insert(output.end(), values.begin(), values.end());
+    }
+    return output;
   }
   secure::EncryptedBit greater(const secure::Ciphertext& a,
                                 const secure::Ciphertext& b) {
@@ -76,8 +85,17 @@ class CountedOps {
   std::vector<secure::EncryptedBit> greaterBatch(
       const std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>>& items) {
     counts_.secure_compare += items.size();
-    ++counts_.secure_compare_dispatches;
-    return ops_.greaterThanBatch(items);
+    std::vector<secure::EncryptedBit> output;
+    output.reserve(items.size());
+    for (std::size_t offset = 0; offset < items.size(); offset += 32) {
+      const auto end = std::min(items.size(), offset + std::size_t{32});
+      std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>> chunk(
+          items.begin() + offset, items.begin() + end);
+      ++counts_.secure_compare_dispatches;
+      auto values = ops_.greaterThanBatch(chunk);
+      output.insert(output.end(), values.begin(), values.end());
+    }
+    return output;
   }
   secure::EncryptedBit less(const secure::Ciphertext& a,
                              const secure::Ciphertext& b) {
@@ -92,18 +110,19 @@ class CountedOps {
   secure::EncryptedBit andBit(const secure::EncryptedBit& a,
                                const secure::EncryptedBit& b) {
     ++counts_.secure_mul;
+    ++counts_.secure_mul_dispatches;
     return ops_.bitAnd(a, b);
   }
   secure::EncryptedBit orBit(const secure::EncryptedBit& a,
                               const secure::EncryptedBit& b) {
     ++counts_.secure_mul;
+    ++counts_.secure_mul_dispatches;
     ++counts_.scalar_mul;
     counts_.add += 2;
     return ops_.bitOr(a, b);
   }
   secure::EncryptedBit orBitExclusive(const secure::EncryptedBit& a,
                                       const secure::EncryptedBit& b) {
-    ++counts_.scalar_mul;
     ++counts_.add;
     return ops_.bitOrExclusive(a, b);
   }
@@ -112,9 +131,25 @@ class CountedOps {
                             const secure::Ciphertext& no) {
     ++counts_.secure_select;
     ++counts_.secure_mul;
+    ++counts_.secure_mul_dispatches;
     ++counts_.scalar_mul;
     counts_.add += 2;
     return ops_.select(condition, yes, no);
+  }
+  std::vector<secure::Ciphertext> selectBatch(
+    const secure::EncryptedBit& condition,
+      const std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>>& values) {
+    counts_.secure_select += values.size();
+    std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>> products;
+    products.reserve(values.size());
+    for (const auto& value : values)
+      products.emplace_back(condition.ciphertext(), sub(value.first, value.second));
+    auto products_out = mulBatch(products);
+    std::vector<secure::Ciphertext> output;
+    output.reserve(values.size());
+    for (std::size_t i = 0; i < values.size(); ++i)
+      output.push_back(add(values[i].second, products_out[i]));
+    return output;
   }
 
  private:
@@ -147,7 +182,10 @@ class Pega {
         negative_(ops_.constant(-request.threshold_scaled)),
         scale_(ops.domain().scale), maximum_total_(maximumTotal()),
         penalty_(ops_.scalar(ops_.add(maximum_total_, one_),
-                             config_.infeasible_penalty)) {}
+                             config_.infeasible_penalty)),
+        penalty_scaled_(ops_.scalar(penalty_, scale_)),
+        missing_extent_scaled_(ops_.scalar(ops_.add(maximum_total_, one_), scale_)),
+        missing_penalty_(ops_.mul(penalty_, missing_extent_scaled_)) {}
 
   ConfidentialScalableOptimizationResult run() {
     std::mt19937_64 random(config_.seed);
@@ -216,15 +254,20 @@ class Pega {
         divideCounts(initialization_counts, config_.population);
     result.stats.per_generation =
         divideCounts(generation_counts, config_.generations);
-    const auto population_scale = ceilDivide(256, config_.population);
-    result.stats.extrapolated_256x1000 = addCounts(
-        multiplyCounts(result.stats.per_candidate, 256ULL),
-        multiplyCounts(result.stats.per_generation,
-                       saturatedMultiply(1000ULL, population_scale)));
-    result.stats.extrapolated_410x1000 = multiplyCounts(
-        result.stats.extrapolated_256x1000, 410ULL);
-    result.stats.extrapolated_410x1000 = divideCounts(
-        result.stats.extrapolated_410x1000, 256ULL);
+    result.stats.extrapolated_256x1000 = modelEstimate(
+        result.stats.per_candidate, result.stats.per_generation,
+        result.stats.rows, result.stats.available_methods,
+        result.stats.population, result.stats.generations,
+        result.stats.elitism, result.stats.tournament_size,
+        result.stats.repair_rounds, 256, 256 * 3, 256, 1000, 8, 4,
+        std::max<std::size_t>(1, result.stats.rows * 3));
+    result.stats.extrapolated_410x1000 = modelEstimate(
+        result.stats.per_candidate, result.stats.per_generation,
+        result.stats.rows, result.stats.available_methods,
+        result.stats.population, result.stats.generations,
+        result.stats.elitism, result.stats.tournament_size,
+        result.stats.repair_rounds, 410, 410 * 3, 256, 1000, 8, 4,
+        std::max<std::size_t>(1, 410 * 3));
     return result;
   }
 
@@ -278,6 +321,38 @@ class Pega {
             a.secure_select - b.secure_select,
             a.secure_mul_dispatches - b.secure_mul_dispatches,
             a.secure_compare_dispatches - b.secure_compare_dispatches};
+  }
+  static ConfidentialScalableOperationCounts modelEstimate(
+      const ConfidentialScalableOperationCounts& per_candidate,
+      const ConfidentialScalableOperationCounts& per_generation,
+      std::size_t rows, std::size_t availability, std::size_t population,
+      std::size_t generations, std::size_t elitism, std::size_t tournament,
+      std::size_t repair_rounds, std::size_t target_rows,
+      std::size_t target_availability,
+      std::size_t target_population, std::size_t target_generations,
+      std::size_t target_elitism, std::size_t target_tournament,
+      std::size_t target_repair_rounds) {
+    const auto ratio = [](std::size_t numerator, std::size_t denominator) {
+      return std::max<long double>(1.0L,
+          static_cast<long double>(numerator) /
+              static_cast<long double>(std::max<std::size_t>(1, denominator)));
+    };
+    const auto row_factor = ratio(target_rows, rows);
+    const auto availability_factor = ratio(target_availability, availability);
+    const auto candidate_factor = row_factor * availability_factor *
+                                  ratio(target_population, population);
+    const auto generation_factor = ratio(target_generations, generations) *
+        ratio(target_population, population) *
+        std::max({row_factor, availability_factor,
+                  ratio(target_elitism, elitism),
+                  ratio(target_tournament, tournament),
+                  ratio(target_repair_rounds, repair_rounds)});
+    const auto candidate = multiplyCounts(
+        per_candidate, static_cast<std::uint64_t>(std::ceil(candidate_factor)));
+    const auto generation = multiplyCounts(
+        per_generation, static_cast<std::uint64_t>(std::ceil(generation_factor)));
+    return addCounts(multiplyCounts(candidate, target_population),
+                     multiplyCounts(generation, target_generations));
   }
 
   secure::Ciphertext maximumTotal() {
@@ -397,13 +472,9 @@ class Pega {
                                        negative_linear, zero_);
     const auto missing = ops_.notBit(ops_.greater(value.c3, zero_));
     const auto base = ops_.scalar(value.total, scale_);
-    const auto constant = ops_.scalar(penalty_, scale_);
     const auto weighted_violation = ops_.mul(penalty_, violation);
-    const auto missing_extent = ops_.add(maximum_total_, one_);
-    const auto missing_cost = ops_.mul(
-        ops_.mul(penalty_, ops_.scalar(missing_extent, scale_)),
-        missing.ciphertext());
-    value.fitness_cache = ops_.add(ops_.add(base, constant),
+    const auto missing_cost = ops_.mul(missing_penalty_, missing.ciphertext());
+    value.fitness_cache = ops_.add(ops_.add(base, penalty_scaled_),
                                    ops_.add(weighted_violation, missing_cost));
     return *value.fitness_cache;
   }
@@ -463,24 +534,22 @@ class Pega {
                     const Individual& no) {
     Individual selected;
     selected.genes.resize(yes.genes.size());
-    selected.row_cost.resize(yes.row_cost.size());
-    selected.row_linear.resize(yes.row_linear.size());
-    selected.row_c12.resize(yes.row_c12.size());
-    selected.row_c3.resize(yes.row_c3.size());
+    std::vector<std::pair<secure::Ciphertext, secure::Ciphertext>> gene_values;
+    gene_values.reserve(yes.genes.size() * 3);
     for (std::size_t row = 0; row < yes.genes.size(); ++row)
       for (std::size_t method = 0; method < 3; ++method)
-        selected.genes[row][method] = ops_.select(condition, yes.genes[row][method],
-                                                   no.genes[row][method]);
-    for (std::size_t row = 0; row < yes.row_cost.size(); ++row) {
-      selected.row_cost[row] = ops_.select(condition, yes.row_cost[row], no.row_cost[row]);
-      selected.row_linear[row] = ops_.select(condition, yes.row_linear[row], no.row_linear[row]);
-      selected.row_c12[row] = ops_.select(condition, yes.row_c12[row], no.row_c12[row]);
-      selected.row_c3[row] = ops_.select(condition, yes.row_c3[row], no.row_c3[row]);
-    }
-    selected.total = ops_.select(condition, yes.total, no.total);
-    selected.c12 = ops_.select(condition, yes.c12, no.c12);
-    selected.c3 = ops_.select(condition, yes.c3, no.c3);
-    selected.linear = ops_.select(condition, yes.linear, no.linear);
+        gene_values.emplace_back(yes.genes[row][method], no.genes[row][method]);
+    const auto selected_genes = ops_.selectBatch(condition, gene_values);
+    for (std::size_t row = 0, index = 0; row < yes.genes.size(); ++row)
+      for (std::size_t method = 0; method < 3; ++method, ++index)
+        selected.genes[row][method] = selected_genes[index];
+    const auto selected_summary = ops_.selectBatch(
+        condition, {{yes.total, no.total}, {yes.c12, no.c12},
+                    {yes.c3, no.c3}, {yes.linear, no.linear}});
+    selected.total = selected_summary[0];
+    selected.c12 = selected_summary[1];
+    selected.c3 = selected_summary[2];
+    selected.linear = selected_summary[3];
     return selected;
   }
 
@@ -631,6 +700,9 @@ class Pega {
   std::int64_t scale_;
   secure::Ciphertext maximum_total_;
   secure::Ciphertext penalty_;
+  secure::Ciphertext penalty_scaled_;
+  secure::Ciphertext missing_extent_scaled_;
+  secure::Ciphertext missing_penalty_;
 };
 
 void validate(const secure::NumericDomain& domain,

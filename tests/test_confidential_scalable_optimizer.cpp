@@ -182,7 +182,13 @@ void assertSolution(ThresholdHarness& harness,
 }
 
 std::vector<std::uint8_t> localSolution(const std::vector<Row>& plain,
-                                        std::int64_t threshold = 50) {
+                                        std::int64_t threshold = 50,
+                                        std::size_t population = 2,
+                                        std::size_t generations = 1,
+                                        std::size_t elitism = 1,
+                                        std::size_t tournament = 1,
+                                        double crossover = 0.0,
+                                        double mutation = 0.0) {
   LocalSecureOps ops;
   soci::optimization::EncryptedOptimizationRequest request;
   request.threshold_scaled = threshold;
@@ -200,13 +206,13 @@ std::vector<std::uint8_t> localSolution(const std::vector<Row>& plain,
     reference.push_back(std::move(reference_row));
   }
   soci::optimization::ConfidentialScalableOptimizerConfig encrypted_config;
-  encrypted_config.population = 2;
-  encrypted_config.generations = 1;
-  encrypted_config.elitism = 1;
-  encrypted_config.tournament_size = 1;
+  encrypted_config.population = population;
+  encrypted_config.generations = generations;
+  encrypted_config.elitism = elitism;
+  encrypted_config.tournament_size = tournament;
   encrypted_config.repair_rounds = plain.size() * 3;
-  encrypted_config.crossover_rate = 0;
-  encrypted_config.mutation_rate = 0;
+  encrypted_config.crossover_rate = crossover;
+  encrypted_config.mutation_rate = mutation;
   encrypted_config.seed = 123;
   const auto encrypted =
       soci::optimization::ConfidentialScalableOptimizer(ops, encrypted_config)
@@ -276,8 +282,20 @@ int main(int argc, char** argv) {
     // Missing methods and exact ratio/lexical ties retain the lower method.
     require(localSolution({Row{1, 1, 3}, Row{3, 3, 1}}).size() == 2,
             "ratio/lex differential failed");
+    bool no_feasible = false;
+    try {
+      (void)localSolution({Row{1, std::nullopt, std::nullopt},
+                           Row{2, std::nullopt, std::nullopt}});
+    } catch (const soci::optimization::OptimizationError& error) {
+      no_feasible = error.status() == soci::optimization::Status::no_feasible_solution;
+    }
+    require(no_feasible, "plaintext no-feasible semantic was not preserved");
     std::vector<Row> trend(30, Row{std::nullopt, 1, 2});
     require(localSolution(trend).size() == 30, "30-row differential failed");
+    require(localSolution({Row{2, 4, 3}, Row{5, 1, 4}, Row{3, 6, 2},
+                           Row{4, 2, 5}, Row{1, 3, 6}}, 50, 8, 5, 2, 3,
+                           0.6, 0.2).size() == 5,
+            "normal GA differential failed");
 
     // One real threshold run proves the existing CP/CSP SIM flow.  Keeping
     // the remaining matrix differential local prevents an unbatched MVP test
