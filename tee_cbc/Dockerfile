@@ -12,7 +12,7 @@ RUN sed -i "s|http://archive.ubuntu.com/ubuntu|${APT_MIRROR}|g; \
             s|http://security.ubuntu.com/ubuntu|${APT_MIRROR}|g" /etc/apt/sources.list && \
     apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake libgmp-dev libssl-dev coinor-cbc \
-    python3 ca-certificates curl gnupg && \
+    python3 openssl ca-certificates curl gnupg && \
     mkdir -p /etc/apt/keyrings && \
     curl -fsSLo /etc/apt/keyrings/gramine-keyring-jammy.gpg \
       https://packages.gramineproject.io/gramine-keyring-jammy.gpg && \

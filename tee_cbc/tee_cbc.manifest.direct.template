@@ -1,0 +1,51 @@
+# Gramine direct manifest for the independent CBC plaintext TEE PoC.
+# Direct mode is a FUNCTIONAL SIMULATION ONLY: it provides no SGX
+# confidentiality and must never be cited as an SGX security/performance
+# result.  Paths are substituted by build_tee_cbc.sh.
+#
+# CBC's LP model, solution and solver log contain plaintext costs.  They
+# live on the in-Gramine encrypted mount at /work (SOCI_CBC_TMPDIR): the
+# host only ever sees ciphertext, and the benchmark removes the files on
+# every exit path.  A plain tmpfs cannot be used here — Gramine tmpfs is
+# per-process, so the CBC child process could not read the parent's LP.
+# /opt/tee_cbc holds only the static benchmark binary.
+#
+# Gramine enforces the trusted/allowed file list on the direct PAL too, so
+# this manifest mirrors the SGX one: strict policy, binaries and libraries
+# listed individually (fail-closed), and only the input data directory is
+# allowed unmeasured.  Undeclared host files are unreadable.
+#
+# The insecure fixed key is acceptable ONLY because direct mode is a
+# functional simulation with no confidentiality claims; the SGX template
+# uses the measurement-derived _sgx_mrenclave key instead.
+loader.log_level = "error"
+loader.insecure__use_cmdline_argv = true
+loader.env.SOCI_CBC_TMPDIR = "/work"
+# Test-only hook so the regression can inject a failing solver; never set in
+# production runs.
+loader.env.SOCI_CBC_COMMAND = { passthrough = true }
+libos.entrypoint = "/opt/tee_cbc/soci_cbc_plaintext_benchmark"
+
+fs.insecure__keys.default = "0123456789abcdef0123456789abcdef"
+
+fs.mounts = [
+  { type = "chroot", path = "/opt/tee_cbc", uri = "file:@TEE_ROOT@" },
+  { path = "/bin", uri = "file:/bin" },
+  { path = "/usr/bin", uri = "file:/usr/bin" },
+  { path = "/lib/x86_64-linux-gnu", uri = "file:/lib/x86_64-linux-gnu" },
+  { path = "/lib64", uri = "file:/lib64" },
+  { path = "/usr/lib/x86_64-linux-gnu", uri = "file:/usr/lib/x86_64-linux-gnu" },
+  @INPUT_MOUNT@
+  { type = "encrypted", path = "/work", uri = "file:@WORK_DIR@", key_name = "default" },
+  { type = "tmpfs", path = "/tmp" }
+]
+
+sgx.file_check_policy = "strict"
+sgx.trusted_files = [
+  "file:@TEE_ROOT@/soci_cbc_plaintext_benchmark",
+@SGX_TRUSTED_FILES@
+]
+sgx.allowed_files = [
+  "file:@DATA_DIR@/",
+]
+
