@@ -12,6 +12,7 @@
 
 namespace soci::optimization {
 namespace {
+std::uint64_t benchmark_visited_nodes = 0;
 constexpr int64_t kScale = 1000000;
 constexpr int64_t kSafe = std::numeric_limits<int64_t>::max() / 16;
 
@@ -99,6 +100,7 @@ struct Solver {
   }
 
   void visit(size_t i, int64_t cost, int64_t c12, int64_t c3, int64_t linear) {
+    ++visited_nodes;
     if (best_cost != std::numeric_limits<int64_t>::max() && cost + min_suffix[i] > best_cost) return;
     if ((__int128)linear + ratio_max_suffix[i] < 0) return;
     if (i == model.costs.size()) {
@@ -119,6 +121,8 @@ struct Solver {
                  linear - model.threshold * c);
     }
   }
+
+  std::uint64_t visited_nodes{};
 };
 
 OptimizationResult solve(const Encoded& model) {
@@ -130,6 +134,7 @@ OptimizationResult solve(const Encoded& model) {
   result.ratio = static_cast<double>(solver.best_c12) /
                  static_cast<double>(solver.best_c12 + solver.best_c3);
   result.solution = std::move(solver.best);
+  benchmark_visited_nodes = solver.visited_nodes;
   return result;
 }
 
@@ -160,6 +165,12 @@ CostMatrix read_csv(const std::string& path) {
   return matrix;
 }
 }  // namespace
+
+// Benchmark-only instrumentation; the public OptimizationResult ABI remains
+// unchanged.  The benchmark executable is the sole consumer.
+std::uint64_t plaintext_benchmark_visited_nodes() noexcept {
+  return benchmark_visited_nodes;
+}
 
 OptimizationResult optimize_plain(const CostMatrix& costs, const std::string& threshold) {
   return solve(encode(costs, threshold));

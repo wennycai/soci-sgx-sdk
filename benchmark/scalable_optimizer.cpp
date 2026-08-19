@@ -8,6 +8,10 @@
 #include <sstream>
 #include <stdexcept>
 
+namespace soci::optimization {
+std::uint64_t plaintext_benchmark_visited_nodes() noexcept;
+}
+
 namespace {
 soci::optimization::CostMatrix read_tsv(const std::string& path,
                                          std::size_t rows) {
@@ -59,6 +63,8 @@ int main(int argc, char** argv) try {
     std::cout << std::setprecision(12) << "{\"rows\":" << rows
               << ",\"threshold\":" << threshold
               << ",\"exact_total_cost\":" << exact.total_cost
+              << ",\"visited_nodes\":"
+              << soci::optimization::plaintext_benchmark_visited_nodes()
               << ",\"exact_runtime_seconds\":" << seconds << "}\n";
     return 0;
   }
