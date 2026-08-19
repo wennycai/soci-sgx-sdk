@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <iostream>
 #include <optional>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <sys/types.h>
@@ -50,20 +51,27 @@ static std::string lp_path() {
 }
 
 int main(int argc, char** argv) try {
-  if (argc != 4) throw std::runtime_error("usage: cbc-baseline TSV ROWS THRESHOLD");
+  if (argc < 4 || argc > 5) throw std::runtime_error("usage: cbc-baseline TSV ROWS THRESHOLD [TIMEOUT_SECONDS]");
   const auto rows = read_tsv(argv[1], std::stoull(argv[2]));
   const double threshold = std::stod(argv[3]);
+  const int timeout_seconds = argc == 5 ? std::stoi(argv[4]) : 60;
+  if (timeout_seconds <= 0) throw std::runtime_error("timeout must be positive");
   const auto start = std::chrono::steady_clock::now();
+  std::size_t variables = 0;
+  for (const auto& row : rows) for (const auto& cost : row.cost) if (cost) ++variables;
   double cheapest_total = 0;
   const bool cheapest_feasible = feasible(rows, threshold, cheapest_total);
   if (cheapest_feasible) {
     const auto seconds = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - start).count();
-    std::cout << std::setprecision(12) << "{\"method\":\"cheapest\",\"completed\":true,\"global_optimum\":true,\"total_cost\":"
-              << cheapest_total << ",\"runtime_seconds\":" << seconds << "}\n";
+    std::cout << std::setprecision(12) << "{\"variables\":" << variables
+              << ",\"cheapest_feasible\":true,\"cheapest_runtime_seconds\":" << seconds
+              << ",\"cbc_runtime_seconds\":0,\"total_runtime_seconds\":" << seconds
+              << ",\"total_cost\":" << cheapest_total
+              << ",\"cbc_nodes\":0,\"lp_iterations\":0,\"optimality_status\":\"cheapest_global_optimum\"}\n";
     return 0;
   }
-  const std::string base = lp_path(), lp = base + ".lp", sol = base + ".sol";
+  const std::string base = lp_path(), lp = base + ".lp", sol = base + ".sol", log = base + ".log";
   {
     std::ofstream out(lp); if (!out) throw std::runtime_error("cannot write LP");
     out << "Minimize\n obj:";
@@ -86,10 +94,16 @@ int main(int argc, char** argv) try {
   }
   const char* cbc = std::getenv("SOCI_CBC_COMMAND");
   const std::string runner = cbc && *cbc ? cbc : "cbc";
-  const std::string command = runner + " " + lp + " solve solu " + sol + " >/dev/null 2>&1";
+  const auto cbc_start = std::chrono::steady_clock::now();
+  const std::string command = runner + " " + lp + " seconds " + std::to_string(timeout_seconds) +
+                              " solve solu " + sol + " >" + log + " 2>&1";
   const int rc = std::system(command.c_str());
+  const double cbc_seconds = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - cbc_start).count();
   double objective = 0;
   bool found_objective = false;
+  std::uint64_t cbc_nodes = 0, lp_iterations = 0;
+  bool timed_out = false;
   std::vector<int> selected(rows.size(), -1);
   std::string line;
   std::ifstream input(sol);
@@ -114,7 +128,30 @@ int main(int argc, char** argv) try {
       throw std::runtime_error("CBC solution has invalid or duplicate selection");
     selected[row] = method;
   }
-  if (rc != 0 || !found_objective) throw std::runtime_error("CBC did not return an objective");
+  std::ifstream log_input(log);
+  while (std::getline(log_input, line)) {
+    if (line.find("Stopped on time limit") != std::string::npos ||
+        line.find("Exiting on maximum time") != std::string::npos) timed_out = true;
+    std::smatch match;
+    if (std::regex_search(line, match, std::regex("took ([0-9]+) iterations and ([0-9]+) nodes"))) {
+      lp_iterations = std::stoull(match[1]);
+      cbc_nodes = std::stoull(match[2]);
+    }
+  }
+  if (rc != 0 || timed_out) {
+    std::remove(lp.c_str()); std::remove(sol.c_str()); std::remove(log.c_str());
+    const auto seconds = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - start).count();
+    std::cout << std::setprecision(12) << "{\"variables\":" << variables
+              << ",\"cheapest_feasible\":false,\"cheapest_runtime_seconds\":0"
+              << ",\"cbc_runtime_seconds\":" << cbc_seconds
+              << ",\"total_runtime_seconds\":" << seconds
+              << ",\"total_cost\":null,\"cbc_nodes\":" << cbc_nodes
+              << ",\"lp_iterations\":" << lp_iterations
+              << ",\"optimality_status\":\"timeout\"}\n";
+    return 0;
+  }
+  if (!found_objective) throw std::runtime_error("CBC did not return an objective");
   long double lhs = 0, rhs = 0;
   double recomputed_total = 0;
   for (std::size_t i = 0; i < rows.size(); ++i) {
@@ -129,10 +166,15 @@ int main(int argc, char** argv) try {
   const double tolerance = 1e-6 * std::max(1.0, std::abs(objective));
   if (std::abs(recomputed_total - objective) > tolerance)
     throw std::runtime_error("CBC objective does not match recomputed total");
-  std::remove(lp.c_str()); std::remove(sol.c_str());
+  std::remove(lp.c_str()); std::remove(sol.c_str()); std::remove(log.c_str());
   const auto seconds = std::chrono::duration<double>(
       std::chrono::steady_clock::now() - start).count();
-  std::cout << std::setprecision(12) << "{\"method\":\"cbc\",\"completed\":true,\"verified\":true,\"total_cost\":"
-            << recomputed_total << ",\"runtime_seconds\":" << seconds << "}\n";
+  std::cout << std::setprecision(12) << "{\"variables\":" << variables
+            << ",\"cheapest_feasible\":false,\"cbc_runtime_seconds\":" << cbc_seconds
+            << ",\"total_runtime_seconds\":" << seconds
+            << ",\"total_cost\":" << recomputed_total
+            << ",\"cbc_nodes\":" << cbc_nodes
+            << ",\"lp_iterations\":" << lp_iterations
+            << ",\"optimality_status\":\"optimal_verified\"}\n";
   return 0;
 } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
