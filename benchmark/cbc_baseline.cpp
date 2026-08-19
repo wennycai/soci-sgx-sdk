@@ -33,21 +33,26 @@ static std::vector<Row> read_tsv(const std::string& path, std::size_t rows) {
 }
 
 static bool feasible(const std::vector<Row>& rows, double threshold,
-                     double& total) {
+                     double& total, std::vector<int>* solution = nullptr,
+                     double* ratio = nullptr) {
   long double lhs = 0, rhs = 0; total = 0;
   for (const auto& row : rows) {
     int best = -1;
     for (int j = 0; j < 3; ++j)
       if (row.cost[j] && (best < 0 || *row.cost[j] < *row.cost[best])) best = j;
     if (best < 0) return false;
+    if (solution) solution->push_back(best + 1);
     total += *row.cost[best];
     if (best < 2) lhs += *row.cost[best]; else rhs += *row.cost[best];
   }
+  if (ratio) *ratio = rhs > 0 ? static_cast<double>(lhs / (lhs + rhs)) : 0.0;
   return rhs > 0 && lhs * (1.0L - threshold) >= rhs * threshold;
 }
 
 static std::string lp_path() {
-  return "/tmp/soci_cbc_" + std::to_string(static_cast<long long>(getpid()));
+  const char* dir = std::getenv("SOCI_CBC_TMPDIR");
+  const std::string base = dir && *dir ? dir : "/tmp";
+  return base + "/soci_cbc_" + std::to_string(static_cast<long long>(getpid()));
 }
 
 int main(int argc, char** argv) try {
@@ -60,7 +65,10 @@ int main(int argc, char** argv) try {
   std::size_t variables = 0;
   for (const auto& row : rows) for (const auto& cost : row.cost) if (cost) ++variables;
   double cheapest_total = 0;
-  const bool cheapest_feasible = feasible(rows, threshold, cheapest_total);
+  double cheapest_ratio = 0;
+  std::vector<int> cheapest_solution;
+  const bool cheapest_feasible = feasible(rows, threshold, cheapest_total,
+                                          &cheapest_solution, &cheapest_ratio);
   if (cheapest_feasible) {
     const auto seconds = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - start).count();
@@ -68,7 +76,11 @@ int main(int argc, char** argv) try {
               << ",\"cheapest_feasible\":true,\"cheapest_runtime_seconds\":" << seconds
               << ",\"cbc_runtime_seconds\":0,\"total_runtime_seconds\":" << seconds
               << ",\"total_cost\":" << cheapest_total
-              << ",\"cbc_nodes\":0,\"lp_iterations\":0,\"optimality_status\":\"cheapest_global_optimum\"}\n";
+              << ",\"ratio\":" << cheapest_ratio
+              << ",\"solution\":[";
+    for (std::size_t i = 0; i < cheapest_solution.size(); ++i)
+      std::cout << (i ? "," : "") << cheapest_solution[i];
+    std::cout << "],\"cbc_nodes\":0,\"lp_iterations\":0,\"optimality_status\":\"cheapest_global_optimum\"}\n";
     return 0;
   }
   const std::string base = lp_path(), lp = base + ".lp", sol = base + ".sol", log = base + ".log";
@@ -84,6 +96,11 @@ int main(int argc, char** argv) try {
       for (int j = 0; j < 3; ++j) if (rows[i].cost[j]) out << " + x_" << i << '_' << j;
       out << " = 1\n";
     }
+    // The ratio semantics require a non-empty denominator (method 3).
+    out << " rhs_positive:";
+    for (std::size_t i = 0; i < rows.size(); ++i)
+      if (rows[i].cost[2]) out << " + x_" << i << "_2";
+    out << " >= 1\n";
     out << " ratio:";
     for (std::size_t i = 0; i < rows.size(); ++i) for (int j = 0; j < 3; ++j)
       if (rows[i].cost[j]) out << " + " << ((j < 2 ? 1.0 - threshold : -threshold) * *rows[i].cost[j]) << " x_" << i << '_' << j;
@@ -173,7 +190,11 @@ int main(int argc, char** argv) try {
             << ",\"cheapest_feasible\":false,\"cbc_runtime_seconds\":" << cbc_seconds
             << ",\"total_runtime_seconds\":" << seconds
             << ",\"total_cost\":" << recomputed_total
-            << ",\"cbc_nodes\":" << cbc_nodes
+            << ",\"ratio\":" << static_cast<double>(lhs / (lhs + rhs))
+            << ",\"solution\":[";
+  for (std::size_t i = 0; i < selected.size(); ++i)
+    std::cout << (i ? "," : "") << selected[i] + 1;
+  std::cout << "],\"cbc_nodes\":" << cbc_nodes
             << ",\"lp_iterations\":" << lp_iterations
             << ",\"optimality_status\":\"optimal_verified\"}\n";
   return 0;

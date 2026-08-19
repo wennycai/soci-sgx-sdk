@@ -4,4 +4,21 @@ services:
     environment:
       SOCI_SGX_MODE: SIM
       SOCI_DEMO_BIND: 0.0.0.0
+      CBC_BIN: /usr/bin/cbc
     command: ["bash","-lc","scripts/build_sim.sh && scripts/test_sim.sh"]
+  tee_cbc_direct:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gramine-direct
+      args:
+        SIM_BASE_IMAGE: docker-test
+    environment:
+      SOCI_SGX_MODE: SIM
+      CBC_BIN: /usr/bin/cbc
+      SOCI_CBC_TMPDIR: /opt/tee_cbc
+    working_dir: /home/sariel/Documents/HE/soci-sgx-sdk
+    volumes:
+      - ..:/home/sariel/Documents/HE/soci-sgx-sdk
+    security_opt:
+      - seccomp=unconfined
+    command: ["bash","-lc","scripts/test_tee_cbc_direct.sh"]

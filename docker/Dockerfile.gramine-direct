@@ -1,0 +1,16 @@
+# Incremental Gramine-direct layer on top of the already-built SIM image.
+# The SIM image contains the toolchain/SGX build products; this layer must not
+# rebuild the SGX SDK or the project dependencies.
+ARG SIM_BASE_IMAGE=docker-test
+FROM ${SIM_BASE_IMAGE}
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg lsb-release coinor-cbc && \
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSLo /etc/apt/keyrings/gramine-keyring-jammy.gpg \
+      https://packages.gramineproject.io/gramine-keyring-jammy.gpg && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/gramine-keyring-jammy.gpg] https://packages.gramineproject.io/ jammy main" \
+      > /etc/apt/sources.list.d/gramine.list && \
+    apt-get update && apt-get install -y --no-install-recommends gramine && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
