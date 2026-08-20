@@ -59,6 +59,15 @@ mkdir -p "$DATA_DIR" "$WORK_DIR"
 # after remote attestation is TODO); /work stays bound to _sgx_mrenclave.
 render direct "$DATA_DIR" default
 render sgx "$DATA_DIR" input_key
+# Native performance control: the identical binary, no manifest, no Gramine.
+# Copying it (instead of running it out of BUILD_DIR) guarantees the benchmark
+# compares bit-identical binaries across the two modes.
+mkdir -p "$OUT/native"
+cp "$BENCH" "$OUT/native/soci_cbc_plaintext_benchmark"
+# The mounts are fixed at render time; record them so run_tee_cbc.sh's native
+# mode reads exactly the files the manifest exposes as /input and /work.
+printf 'TEE_CBC_DATA_DIR=%q\nTEE_CBC_WORK_DIR=%q\n' "$DATA_DIR" "$WORK_DIR" \
+  > "$OUT/env"
 if [[ "${TEE_CBC_BUILD_SGX:-1}" == 1 ]]; then
   command -v gramine-sgx-sign >/dev/null || { echo "gramine-sgx-sign is required" >&2; exit 2; }
   : "${SGX_SIGNING_KEY:?set SGX_SIGNING_KEY for SGX signing}"
