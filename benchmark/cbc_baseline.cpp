@@ -127,8 +127,8 @@ int main(int argc, char** argv) try {
   std::uint64_t cbc_nodes = 0, lp_iterations = 0;
   bool timed_out = false;
   std::string line;
-  // Inspect the solver log first: a solver that failed (rc != 0) or hit the
-  // time limit reports the timeout outcome even when it wrote no solution.
+  // Inspect the solver log first: CBC exits 0 even when it stops on the
+  // time limit, so the outcome must come from the log, not the exit code.
   std::ifstream log_input(log);
   while (std::getline(log_input, line)) {
     if (line.find("Stopped on time limit") != std::string::npos ||
@@ -139,7 +139,11 @@ int main(int argc, char** argv) try {
       cbc_nodes = std::stoull(match[2]);
     }
   }
-  if (rc != 0 || timed_out) {
+  // Failure outcomes keep the same authorized fields but distinguish causes:
+  // "timeout" is a real CBC time limit; "solver_error" covers nonzero exit
+  // (crash / exec failure) and unusable output (missing solution/objective).
+  // Mixing them would let environment failures pollute timeout statistics.
+  const auto print_failure = [&](const char* status) {
     const auto seconds = std::chrono::duration<double>(
         std::chrono::steady_clock::now() - start).count();
     std::cout << std::setprecision(12) << "{\"variables\":" << variables
@@ -148,14 +152,24 @@ int main(int argc, char** argv) try {
               << ",\"total_runtime_seconds\":" << seconds
               << ",\"total_cost\":null,\"cbc_nodes\":" << cbc_nodes
               << ",\"lp_iterations\":" << lp_iterations
-              << ",\"optimality_status\":\"timeout\"}\n";
+              << ",\"optimality_status\":\"" << status << "\"}\n";
+  };
+  if (timed_out) {
+    print_failure("timeout");
+    return 0;
+  }
+  if (rc != 0) {
+    print_failure("solver_error");
     return 0;
   }
   double objective = 0;
   bool found_objective = false;
   std::vector<int> selected(rows.size(), -1);
   std::ifstream input(sol);
-  if (!input) throw std::runtime_error("CBC solution missing");
+  if (!input) {
+    print_failure("solver_error");
+    return 0;
+  }
   while (std::getline(input, line)) {
     const auto marker = line.find("objective value");
     if (marker != std::string::npos) {
@@ -176,7 +190,10 @@ int main(int argc, char** argv) try {
       throw std::runtime_error("CBC solution has invalid or duplicate selection");
     selected[row] = method;
   }
-  if (!found_objective) throw std::runtime_error("CBC did not return an objective");
+  if (!found_objective) {
+    print_failure("solver_error");
+    return 0;
+  }
   long double lhs = 0, rhs = 0;
   double recomputed_total = 0;
   for (std::size_t i = 0; i < rows.size(); ++i) {

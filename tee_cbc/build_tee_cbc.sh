@@ -54,9 +54,11 @@ WORK_DIR=${TEE_CBC_WORK_DIR:-"$OUT/work"}
 mkdir -p "$DATA_DIR" "$WORK_DIR"
 # The direct manifest is a functional simulation; the SGX manifest is the
 # strict, fail-closed confidentiality path.  Both are always rendered so
-# template regressions surface even without SGX hardware.
+# template regressions surface even without SGX hardware.  The SGX input
+# mount uses the deployment-provisioned "input_key" (secret provisioning
+# after remote attestation is TODO); /work stays bound to _sgx_mrenclave.
 render direct "$DATA_DIR" default
-render sgx "$DATA_DIR" _sgx_mrenclave
+render sgx "$DATA_DIR" input_key
 if [[ "${TEE_CBC_BUILD_SGX:-1}" == 1 ]]; then
   command -v gramine-sgx-sign >/dev/null || { echo "gramine-sgx-sign is required" >&2; exit 2; }
   : "${SGX_SIGNING_KEY:?set SGX_SIGNING_KEY for SGX signing}"

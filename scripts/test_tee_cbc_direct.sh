@@ -59,6 +59,12 @@ TEE_CBC_BUILD_SGX=1 SGX_SIGNING_KEY="$OUT-signing-key.pem" \
 test -f "$OUT/sgx/soci_cbc_plaintext_benchmark.manifest.sgx"
 ! grep -q allow_all_but_log "$OUT/sgx/soci_cbc_plaintext_benchmark.manifest"
 grep -q 'file_check_policy = "strict"' "$OUT/sgx/soci_cbc_plaintext_benchmark.manifest"
+# Key split: /input uses the deployment-provisioned input_key (external data
+# owner encrypts with pf-crypt); /work uses the measurement-derived special
+# key for enclave-local CBC intermediates.  gramine-manifest re-renders
+# mounts as multi-line TOML, hence the context-window greps.
+grep -A3 'path = "/input"' "$OUT/sgx/soci_cbc_plaintext_benchmark.manifest" | grep -q 'key_name = "input_key"'
+grep -A3 'path = "/work"' "$OUT/sgx/soci_cbc_plaintext_benchmark.manifest" | grep -q 'key_name = "_sgx_mrenclave"'
 
 echo "== host-level cleanup checks (no Gramine)"
 TMP=$(mktemp -d)
@@ -66,15 +72,21 @@ json_check "$(SOCI_CBC_TMPDIR="$TMP" "$BIN" "$DATA/costs_exact.tsv" 6 0.5 60)" o
 [[ -z $(find "$TMP" -type f -print -quit) ]]
 json_check "$(SOCI_CBC_TMPDIR="$TMP" "$BIN" "$DATA/costs_fast.tsv" 3 0.5 60)" cheapest_global_optimum
 [[ -z $(find "$TMP" -type f -print -quit) ]]
-# Solver failure path (rc != 0): timeout JSON, temp files removed.
-json_check "$(SOCI_CBC_TMPDIR="$TMP" SOCI_CBC_COMMAND=/bin/false "$BIN" "$DATA/costs_exact.tsv" 6 0.5 60)" timeout
+# Solver crash/exec failure (rc != 0): solver_error, temp files removed.
+json_check "$(SOCI_CBC_TMPDIR="$TMP" SOCI_CBC_COMMAND=/bin/false "$BIN" "$DATA/costs_exact.tsv" 6 0.5 60)" solver_error
 [[ -z $(find "$TMP" -type f -print -quit) ]]
-# Exception path (empty CBC output): nonzero exit, temp files removed.
-if SOCI_CBC_TMPDIR="$TMP" SOCI_CBC_COMMAND=/bin/true "$BIN" "$DATA/costs_exact.tsv" 6 0.5 60 2>/dev/null; then
-  echo "expected failure for empty CBC solution" >&2; exit 1
-fi
+# Unusable solver output (rc == 0, no solution written): solver_error, not
+# an exception, temp files removed.
+json_check "$(SOCI_CBC_TMPDIR="$TMP" SOCI_CBC_COMMAND=/bin/true "$BIN" "$DATA/costs_exact.tsv" 6 0.5 60)" solver_error
 [[ -z $(find "$TMP" -type f -print -quit) ]]
-rm -rf "$TMP"
+# Genuine timeout: CBC reports the time limit in its log and exits 0 - this
+# must classify as "timeout", distinct from solver_error above.
+FAKE=$(mktemp -d)
+printf '#!/bin/sh\necho "Result - Stopped on time limit"\nexit 0\n' > "$FAKE/fake_timeout.sh"
+chmod +x "$FAKE/fake_timeout.sh"
+json_check "$(SOCI_CBC_TMPDIR="$TMP" SOCI_CBC_COMMAND="$FAKE/fake_timeout.sh" "$BIN" "$DATA/costs_exact.tsv" 6 0.5 60)" timeout
+[[ -z $(find "$TMP" -type f -print -quit) ]]
+rm -rf "$TMP" "$FAKE"
 
 echo "== gramine-direct: CBC Exact path"
 cp "$DATA/costs_exact.tsv" "$DATA/costs.tsv"
@@ -102,7 +114,7 @@ echo "== gramine-direct: solver failure path cleans up"
 cp "$DATA/costs_exact.tsv" "$DATA/costs.tsv"
 result=$(SOCI_CBC_COMMAND=/bin/false TEE_CBC_DATA_DIR="$DATA" TEE_CBC_OUT="$OUT" \
   "$ROOT/tee_cbc/run_tee_cbc.sh" direct 6 0.5 60)
-json_check "$result" timeout
+json_check "$result" solver_error
 assert_no_residue
 
 echo "== fail-closed probe: undeclared host file must be unreadable"

@@ -6,6 +6,18 @@
 # allowed_files escape hatch; an undeclared dependency fails at
 # gramine-sgx-sign or at enclave launch instead of being silently accepted.
 #
+# Encryption keys are deliberately distinct per mount:
+#   /input -> "input_key": the cost data is prepared OUTSIDE the enclave by
+#             the data owner with gramine-sgx-pf-crypt.  Production
+#             provisioning of input_key (16-byte wrap key installed via
+#             remote attestation + Gramine secret provisioning) is TODO;
+#             until then the mount cannot be decrypted.
+#   /work  -> "_sgx_mrenclave": Gramine's measurement-derived special key
+#             (one of the SGX PAL special keys).  These files are
+#             enclave-local CBC intermediates created and consumed inside
+#             the enclave, so binding them to the enclave measurement is
+#             exactly right.
+#
 # CBC's LP model, solution and solver log contain plaintext costs.  They
 # live on the in-enclave encrypted mount at /work (SOCI_CBC_TMPDIR), keyed
 # with the measurement-derived _sgx_mrenclave key: the host only ever sees
