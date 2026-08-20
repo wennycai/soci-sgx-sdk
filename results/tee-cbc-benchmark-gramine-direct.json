@@ -1,7 +1,16 @@
 {
   "stage": "Gramine-direct / SIM-functional",
   "note": "Gramine-direct is a functional simulation. These numbers are NOT SGX HW performance and NOT Intel SGX SDK SIM. Real hardware acceptance runs later via run_tee_cbc.sh sgx.",
+  "acceptance_rule": "accepted requires every repetition of both modes to succeed with zero timeout/solver_error/infeasible/harness_error and no CBC residue, plus cross-mode agreement and a verified dataset. consistent reports agreement ALONE and is not a pass.",
   "dataset": "binding",
+  "dataset_verification": {
+    "verified": true,
+    "path": "/tmp/tee-cbc-benchmark-data/costs.tsv",
+    "provenance": "/workspace/tee_cbc/data/costs.provenance.json",
+    "sha256": "0931c4ac98e2897a4fba3248ddeae7a56e3259e074e7c036a62fae5f6ebc99e7",
+    "rows": 410,
+    "workbook_sha256": "cd65a41a6ef68eadd69424379da2d24b832f31816227937c663c1feb11d1f35b"
+  },
   "repetitions": 10,
   "cbc_internal_timeout_seconds": 0,
   "wall_timeout_seconds": 600,
@@ -31,17 +40,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.007746759001747705,
-        "p95": 0.008815257002424914
+        "median": 0.007973841500643175,
+        "p95": 0.008634370999061503
       },
       "internal_total_time": {
-        "median": 0.004302601,
-        "p95": 0.004800002
+        "median": 0.004396312499999999,
+        "p95": 0.005125965
       },
       "cbc_solver_time": {
-        "median": 0.00419337,
-        "p95": 0.004685388
+        "median": 0.004296584500000001,
+        "p95": 0.005010231
       },
       "objective": 857.66,
       "ratio": 0.768369750251,
@@ -61,7 +72,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Gramine-direct / SIM-functional",
@@ -75,17 +87,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.6527246235018538,
-        "p95": 0.6704124919997412
+        "median": 0.6526196824997896,
+        "p95": 0.6606671799963806
       },
       "internal_total_time": {
-        "median": 0.5218795,
-        "p95": 0.54214
+        "median": 0.5224905,
+        "p95": 0.52846
       },
       "cbc_solver_time": {
-        "median": 0.5214084999999999,
-        "p95": 0.541498
+        "median": 0.5220054999999999,
+        "p95": 0.528021
       },
       "objective": 857.66,
       "ratio": 0.768369750251,
@@ -105,7 +119,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Native",
@@ -119,17 +134,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.0070756394998170435,
-        "p95": 0.007712715996603947
+        "median": 0.007151341000280809,
+        "p95": 0.007719193999946583
       },
       "internal_total_time": {
-        "median": 0.003622812,
-        "p95": 0.003949747
+        "median": 0.0035711370000000003,
+        "p95": 0.003953943
       },
       "cbc_solver_time": {
-        "median": 0.0035284640000000003,
-        "p95": 0.003838384
+        "median": 0.0034552009999999998,
+        "p95": 0.003846839
       },
       "objective": 857.66,
       "ratio": 0.768369750251,
@@ -149,7 +166,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Gramine-direct / SIM-functional",
@@ -163,17 +181,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.6508420685022429,
-        "p95": 0.655031782000151
+        "median": 0.6501046969970048,
+        "p95": 0.6576181850032299
       },
       "internal_total_time": {
-        "median": 0.52013,
-        "p95": 0.526853
+        "median": 0.520656,
+        "p95": 0.528726
       },
       "cbc_solver_time": {
-        "median": 0.5196514999999999,
-        "p95": 0.526245
+        "median": 0.520188,
+        "p95": 0.528193
       },
       "objective": 857.66,
       "ratio": 0.768369750251,
@@ -193,7 +213,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Native",
@@ -207,17 +228,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.008257795499957865,
-        "p95": 0.009144357005425263
+        "median": 0.008371787502255756,
+        "p95": 0.009286030996008776
       },
       "internal_total_time": {
-        "median": 0.00472845,
-        "p95": 0.004966525
+        "median": 0.004837996,
+        "p95": 0.005175824
       },
       "cbc_solver_time": {
-        "median": 0.0046199725,
-        "p95": 0.004852707
+        "median": 0.0047256925,
+        "p95": 0.005052324
       },
       "objective": 898.65,
       "ratio": 0.804729316197,
@@ -237,7 +260,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Gramine-direct / SIM-functional",
@@ -251,17 +275,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.6509997114990256,
-        "p95": 0.7138590019967523
+        "median": 0.6508471755005303,
+        "p95": 0.6665866960029234
       },
       "internal_total_time": {
-        "median": 0.5202260000000001,
-        "p95": 0.576037
+        "median": 0.5206345,
+        "p95": 0.536879
       },
       "cbc_solver_time": {
-        "median": 0.5197215,
-        "p95": 0.575421
+        "median": 0.5201635,
+        "p95": 0.5364
       },
       "objective": 898.65,
       "ratio": 0.804729316197,
@@ -281,7 +307,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Native",
@@ -295,17 +322,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.018893511001806473,
-        "p95": 0.020018741000967566
+        "median": 0.019832967504044063,
+        "p95": 0.030012178998731542
       },
       "internal_total_time": {
-        "median": 0.0153197,
-        "p95": 0.016267595
+        "median": 0.015905402,
+        "p95": 0.025952084
       },
       "cbc_solver_time": {
-        "median": 0.014889615,
-        "p95": 0.015824349
+        "median": 0.015449985,
+        "p95": 0.025459657
       },
       "objective": 15689.03,
       "ratio": 0.500021352499,
@@ -515,7 +544,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Gramine-direct / SIM-functional",
@@ -529,17 +559,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.6613065300007293,
-        "p95": 0.6817708069938817
+        "median": 0.6654613470018376,
+        "p95": 0.6685388389960281
       },
       "internal_total_time": {
-        "median": 0.5312025,
-        "p95": 0.547394
+        "median": 0.5332375,
+        "p95": 0.539093
       },
       "cbc_solver_time": {
-        "median": 0.5300275000000001,
-        "p95": 0.546281
+        "median": 0.532,
+        "p95": 0.537955
       },
       "objective": 15689.03,
       "ratio": 0.500021352499,
@@ -749,7 +781,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Native",
@@ -763,17 +796,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.0318317239980388,
-        "p95": 0.03310927300481126
+        "median": 0.03230029499900411,
+        "p95": 0.033404505004000384
       },
       "internal_total_time": {
-        "median": 0.028002757,
-        "p95": 0.028985611
+        "median": 0.028309431500000003,
+        "p95": 0.029545241
       },
       "cbc_solver_time": {
-        "median": 0.0275395295,
-        "p95": 0.028532915
+        "median": 0.027795361999999997,
+        "p95": 0.029091797
       },
       "objective": 16792.7615,
       "ratio": 0.700001604858,
@@ -983,7 +1018,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Gramine-direct / SIM-functional",
@@ -997,17 +1033,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.6811050459982653,
-        "p95": 0.6865161499954411
+        "median": 0.6755623505014228,
+        "p95": 0.6899837329983711
       },
       "internal_total_time": {
-        "median": 0.5494285,
-        "p95": 1.089449
+        "median": 0.5459245,
+        "p95": 1.170117
       },
       "cbc_solver_time": {
-        "median": 0.548183,
-        "p95": 1.088206
+        "median": 0.5446934999999999,
+        "p95": 1.169002
       },
       "objective": 16792.7615,
       "ratio": 0.700001604858,
@@ -1217,7 +1255,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Native",
@@ -1231,17 +1270,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.02476199949887814,
-        "p95": 0.026493794997804798
+        "median": 0.024765820999164134,
+        "p95": 0.0260864380034036
       },
       "internal_total_time": {
-        "median": 0.021113181,
-        "p95": 0.02208792
+        "median": 0.020958444,
+        "p95": 0.022077403
       },
       "cbc_solver_time": {
-        "median": 0.020629385,
-        "p95": 0.021603863
+        "median": 0.0205187965,
+        "p95": 0.021637832
       },
       "objective": 17577.259,
       "ratio": 0.800000159297,
@@ -1451,7 +1492,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     },
     {
       "stage": "Gramine-direct / SIM-functional",
@@ -1465,17 +1507,19 @@
       "solver_error_runs": 0,
       "infeasible_runs": 0,
       "harness_error_runs": 0,
+      "residue_runs": 0,
+      "complete": true,
       "external_wall_time": {
-        "median": 0.6753042005038878,
-        "p95": 0.6855251169981784
+        "median": 0.6665858015003323,
+        "p95": 0.676300489998539
       },
       "internal_total_time": {
-        "median": 0.542967,
-        "p95": 0.55121
+        "median": 0.535076,
+        "p95": 0.546149
       },
       "cbc_solver_time": {
-        "median": 0.541837,
-        "p95": 0.550067
+        "median": 0.5338769999999999,
+        "p95": 0.54502
       },
       "objective": 17577.259,
       "ratio": 0.800000159297,
@@ -1685,7 +1729,8 @@
       "cbc_nodes": 0,
       "lp_iterations": 0,
       "self_consistent": true,
-      "failure_details": []
+      "failure_details": [],
+      "residue_details": []
     }
   ],
   "comparisons": [
@@ -1695,32 +1740,34 @@
       "comparable": true,
       "agreed_without_samples": false,
       "consistent": true,
+      "accepted": true,
+      "rejection_reasons": [],
       "objective_match": true,
       "ratio_match": true,
       "solution_match": true,
       "optimality_status_match": true,
       "gramine_direct_vs_native_overhead": {
         "external_wall_time": {
-          "median_absolute_seconds": 0.6449778645001061,
-          "median_percent": 8325.776810077556,
-          "p95_absolute_seconds": 0.6615972349973163,
-          "p95_percent": 7505.138361993565,
+          "median_absolute_seconds": 0.6446458409991465,
+          "median_percent": 8084.507836619889,
+          "p95_absolute_seconds": 0.6520328089973191,
+          "p95_percent": 7551.5959305917095,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "internal_total_time": {
-          "median_absolute_seconds": 0.517576899,
-          "median_percent": 12029.395684145476,
-          "p95_absolute_seconds": 0.537339998,
-          "p95_percent": 11194.578627258905,
+          "median_absolute_seconds": 0.5180941875,
+          "median_percent": 11784.744316970191,
+          "p95_absolute_seconds": 0.5233340350000001,
+          "p95_percent": 10209.473435733567,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "cbc_solver_time": {
-          "median_absolute_seconds": 0.51721513,
-          "median_percent": 12334.11623586757,
-          "p95_absolute_seconds": 0.5368126120000001,
-          "p95_percent": 11457.164529383694,
+          "median_absolute_seconds": 0.5177089154999999,
+          "median_percent": 12049.313018282308,
+          "p95_absolute_seconds": 0.523010769,
+          "p95_percent": 10438.855394092607,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         }
@@ -1732,32 +1779,34 @@
       "comparable": true,
       "agreed_without_samples": false,
       "consistent": true,
+      "accepted": true,
+      "rejection_reasons": [],
       "objective_match": true,
       "ratio_match": true,
       "solution_match": true,
       "optimality_status_match": true,
       "gramine_direct_vs_native_overhead": {
         "external_wall_time": {
-          "median_absolute_seconds": 0.6437664290024259,
-          "median_percent": 9098.349753673458,
-          "p95_absolute_seconds": 0.647319066003547,
-          "p95_percent": 8392.880877353371,
+          "median_absolute_seconds": 0.642953355996724,
+          "median_percent": 8990.668407106827,
+          "p95_absolute_seconds": 0.6498989910032833,
+          "p95_percent": 8419.259718149078,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "internal_total_time": {
-          "median_absolute_seconds": 0.516507188,
-          "median_percent": 14257.079528278033,
-          "p95_absolute_seconds": 0.5229032530000001,
-          "p95_percent": 13238.904998218874,
+          "median_absolute_seconds": 0.517084863,
+          "median_percent": 14479.55827513758,
+          "p95_absolute_seconds": 0.5247720570000001,
+          "p95_percent": 13272.119931926185,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "cbc_solver_time": {
-          "median_absolute_seconds": 0.516123036,
-          "median_percent": 14627.413968230934,
-          "p95_absolute_seconds": 0.5224066159999999,
-          "p95_percent": 13610.0665279972,
+          "median_absolute_seconds": 0.516732799,
+          "median_percent": 14955.2167587356,
+          "p95_absolute_seconds": 0.524346161,
+          "p95_percent": 13630.572035897523,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         }
@@ -1769,32 +1818,34 @@
       "comparable": true,
       "agreed_without_samples": false,
       "consistent": true,
+      "accepted": true,
+      "rejection_reasons": [],
       "objective_match": true,
       "ratio_match": true,
       "solution_match": true,
       "optimality_status_match": true,
       "gramine_direct_vs_native_overhead": {
         "external_wall_time": {
-          "median_absolute_seconds": 0.6427419159990677,
-          "median_percent": 7783.456444305835,
-          "p95_absolute_seconds": 0.7047146449913271,
-          "p95_percent": 7706.552189215998,
+          "median_absolute_seconds": 0.6424753879982745,
+          "median_percent": 7674.291635151528,
+          "p95_absolute_seconds": 0.6573006650069146,
+          "p95_percent": 7078.381122025424,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "internal_total_time": {
-          "median_absolute_seconds": 0.5154975500000001,
-          "median_percent": 10902.040837906716,
-          "p95_absolute_seconds": 0.571070475,
-          "p95_percent": 11498.391229280029,
+          "median_absolute_seconds": 0.515796504,
+          "median_percent": 10661.36689654146,
+          "p95_absolute_seconds": 0.5317031759999999,
+          "p95_percent": 10272.821796104348,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "cbc_solver_time": {
-          "median_absolute_seconds": 0.5151015274999999,
-          "median_percent": 11149.450077895484,
-          "p95_absolute_seconds": 0.570568293,
-          "p95_percent": 11757.732189476925,
+          "median_absolute_seconds": 0.5154378075,
+          "median_percent": 10907.138107272109,
+          "p95_absolute_seconds": 0.531347676,
+          "p95_percent": 10516.896303562478,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         }
@@ -1806,32 +1857,34 @@
       "comparable": true,
       "agreed_without_samples": false,
       "consistent": true,
+      "accepted": true,
+      "rejection_reasons": [],
       "objective_match": true,
       "ratio_match": true,
       "solution_match": true,
       "optimality_status_match": true,
       "gramine_direct_vs_native_overhead": {
         "external_wall_time": {
-          "median_absolute_seconds": 0.6424130189989228,
-          "median_percent": 3400.178076681986,
-          "p95_absolute_seconds": 0.6617520659929141,
-          "p95_percent": 3305.6627585167803,
+          "median_absolute_seconds": 0.6456283794977935,
+          "median_percent": 3255.3291854390723,
+          "p95_absolute_seconds": 0.6385266599972965,
+          "p95_percent": 2127.5584822557657,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "internal_total_time": {
-          "median_absolute_seconds": 0.5158828,
-          "median_percent": 3367.44714322082,
-          "p95_absolute_seconds": 0.5311264050000001,
-          "p95_percent": 3264.9350134423685,
+          "median_absolute_seconds": 0.517332098,
+          "median_percent": 3252.5559429431587,
+          "p95_absolute_seconds": 0.513140916,
+          "p95_percent": 1977.262851029613,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "cbc_solver_time": {
-          "median_absolute_seconds": 0.5151378850000001,
-          "median_percent": 3459.7125916284613,
-          "p95_absolute_seconds": 0.5304566510000001,
-          "p95_percent": 3352.1546510380936,
+          "median_absolute_seconds": 0.516550015,
+          "median_percent": 3343.3690388696173,
+          "p95_absolute_seconds": 0.512495343,
+          "p95_percent": 2012.9703357747512,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         }
@@ -1843,32 +1896,34 @@
       "comparable": true,
       "agreed_without_samples": false,
       "consistent": true,
+      "accepted": true,
+      "rejection_reasons": [],
       "objective_match": true,
       "ratio_match": true,
       "solution_match": true,
       "optimality_status_match": true,
       "gramine_direct_vs_native_overhead": {
         "external_wall_time": {
-          "median_absolute_seconds": 0.6492733220002265,
-          "median_percent": 2039.7051760068955,
-          "p95_absolute_seconds": 0.6534068769906298,
-          "p95_percent": 1973.4860288103587,
+          "median_absolute_seconds": 0.6432620555024187,
+          "median_percent": 1991.5052030399472,
+          "p95_absolute_seconds": 0.6565792279943707,
+          "p95_percent": 1965.5409589686826,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "internal_total_time": {
-          "median_absolute_seconds": 0.521425743,
-          "median_percent": 1862.051450862499,
-          "p95_absolute_seconds": 1.060463389,
-          "p95_percent": 3658.585596142858,
+          "median_absolute_seconds": 0.5176150685,
+          "median_percent": 1828.419155997534,
+          "p95_absolute_seconds": 1.1405717590000002,
+          "p95_percent": 3860.424624730596,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "cbc_solver_time": {
-          "median_absolute_seconds": 0.5206434704999999,
-          "median_percent": 1890.5314649620284,
-          "p95_absolute_seconds": 1.059673085,
-          "p95_percent": 3713.861990616802,
+          "median_absolute_seconds": 0.516898138,
+          "median_percent": 1859.6560749955333,
+          "p95_absolute_seconds": 1.1399102030000001,
+          "p95_percent": 3918.3217282865003,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         }
@@ -1880,32 +1935,34 @@
       "comparable": true,
       "agreed_without_samples": false,
       "consistent": true,
+      "accepted": true,
+      "rejection_reasons": [],
       "objective_match": true,
       "ratio_match": true,
       "solution_match": true,
       "optimality_status_match": true,
       "gramine_direct_vs_native_overhead": {
         "external_wall_time": {
-          "median_absolute_seconds": 0.6505422010050097,
-          "median_percent": 2627.1796065357444,
-          "p95_absolute_seconds": 0.6590313220003736,
-          "p95_percent": 2487.4930981196885,
+          "median_absolute_seconds": 0.6418199805011682,
+          "median_percent": 2591.555436514017,
+          "p95_absolute_seconds": 0.6502140519951354,
+          "p95_percent": 2492.536742311462,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "internal_total_time": {
-          "median_absolute_seconds": 0.5218538189999999,
-          "median_percent": 2471.6967992648756,
-          "p95_absolute_seconds": 0.5291220799999999,
-          "p95_percent": 2395.5269667764096,
+          "median_absolute_seconds": 0.514117556,
+          "median_percent": 2453.0330400482017,
+          "p95_absolute_seconds": 0.524071597,
+          "p95_percent": 2373.7918676395043,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         },
         "cbc_solver_time": {
-          "median_absolute_seconds": 0.521207615,
-          "median_percent": 2526.5300686375285,
-          "p95_absolute_seconds": 0.5284631369999999,
-          "p95_percent": 2446.1511212138303,
+          "median_absolute_seconds": 0.5133582034999999,
+          "median_percent": 2501.8923673228105,
+          "p95_absolute_seconds": 0.5233821679999999,
+          "p95_percent": 2418.8290582901277,
           "percent_meaningful": false,
           "percent_floor_seconds": 0.5
         }
@@ -1913,5 +1970,7 @@
     }
   ],
   "consistent": true,
-  "inconsistent_groups": []
+  "inconsistent_groups": [],
+  "accepted": true,
+  "rejected_groups": []
 }
