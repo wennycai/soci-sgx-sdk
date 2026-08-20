@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
-"""Materialise the deterministic binding dataset for the TEE+CBC benchmark.
+"""Prepare the frozen binding dataset for the TEE+CBC benchmark. ONE-TIME.
+
+This script is *not* part of a benchmark run.  It materialises `costs.tsv`
+once; the file and its provenance are then committed and frozen, and
+`benchmark_tee_cbc.py` only ever verifies the recorded sha256 before
+measuring.  Regenerating per run would decouple each result from the results
+it is compared against without anything in the report showing it, so an
+existing dataset is never overwritten without an explicit `--force`.
+
+Re-preparing is legitimate for exactly one reason: the acceptance matrix needs
+row counts the current file cannot serve.  Then prepare a larger dataset,
+commit it with its provenance, and point the harness at it - the frozen file
+bounds the matrix, not the other way round.
 
 `soci_cbc_plaintext_benchmark` reads the first ROWS lines of the TSV, so a
-single `costs.tsv` serves the whole 10/200 acceptance matrix and the
-smaller row counts are exact prefixes of the larger ones.  That also keeps the
-Gramine `/input` mount single-file: the mount path is baked into the manifest
-at render time, so per-row-count directories could not be swapped at runtime.
+single `costs.tsv` serves every row count up to its length and the smaller
+counts are exact prefixes of the larger ones.  That also keeps the Gramine
+`/input` mount single-file: the mount path is baked into the manifest at
+render time, so per-row-count directories could not be swapped at runtime.
 
 Provenance of the rows:
 
@@ -27,7 +39,9 @@ sees the full matrix; it is purely per-row and indexed by position, so rows
 import argparse
 import hashlib
 import json
+import os
 import random
+import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -111,14 +125,26 @@ def main():
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--provenance",
                         help="write the dataset provenance JSON here; keep it "
-                             "OUTSIDE data_dir, which is the encrypted /input "
-                             "mount in SGX mode")
+                             "OUTSIDE the Gramine /input mount, which is "
+                             "encrypted in SGX mode")
+    parser.add_argument("--force", action="store_true",
+                        help="overwrite an existing costs.tsv. Re-freezing the "
+                             "dataset invalidates comparability with every "
+                             "result already published against it, so the "
+                             "provenance must be re-committed alongside.")
     args = parser.parse_args()
+
+    target = os.path.join(args.data_dir, "costs.tsv")
+    if os.path.exists(target) and not args.force:
+        print(f"{target} already exists and the dataset is frozen; pass "
+              f"--force to re-prepare it (and re-commit the provenance).",
+              file=sys.stderr)
+        return 3
 
     source = read_xlsx(args.workbook)
     extended, synthetic = extend(source, args.rows, args.seed)
     payload = render(binding_rows(extended))
-    target = f"{args.data_dir}/costs.tsv"
+    os.makedirs(args.data_dir, exist_ok=True)
     with open(target, "w") as handle:
         handle.write(payload)
 
@@ -143,7 +169,8 @@ def main():
             json.dump(provenance, handle, indent=2, sort_keys=True)
             handle.write("\n")
     print(json.dumps(provenance, separators=(",", ":"), sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
