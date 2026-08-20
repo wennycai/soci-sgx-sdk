@@ -10,10 +10,8 @@
 # per-process, so the CBC child process could not read the parent's LP.
 # /opt/tee_cbc holds only the static benchmark binary.
 #
-# Gramine enforces the trusted/allowed file list on the direct PAL too, so
-# this manifest mirrors the SGX one: strict policy, binaries and libraries
-# listed individually (fail-closed), and only the input data directory is
-# allowed unmeasured.  Undeclared host files are unreadable.
+# SGX strict-manifest rendering and offline signing are checked by the
+# regression; runtime fail-closed verification is deferred to SGX hardware.
 #
 # The insecure fixed key is acceptable ONLY because direct mode is a
 # functional simulation with no confidentiality claims; the SGX template

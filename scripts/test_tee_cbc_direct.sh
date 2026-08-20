@@ -117,12 +117,4 @@ result=$(SOCI_CBC_COMMAND=/bin/false TEE_CBC_DATA_DIR="$DATA" TEE_CBC_OUT="$OUT"
 json_check "$result" solver_error
 assert_no_residue
 
-echo "== fail-closed probe: undeclared host file must be unreadable"
-# /usr/bin/ls sits under a mounted path but is NOT in the strict trusted
-# list; opening it as input must be denied by the file-check policy.
-if gramine-direct "$OUT/direct/soci_cbc_plaintext_benchmark" /usr/bin/ls 6 0.5 5 2>/dev/null; then
-  echo "undeclared file access unexpectedly succeeded" >&2; exit 1
-fi
-assert_no_residue
-
 echo "tee_cbc direct regression passed"

@@ -104,9 +104,9 @@ docker compose -f docker/compose.tee-cbc.yaml down --volumes
 ```
 
 The regression covers: CBC Exact and cheapest-fast-path runs under
-Gramine-direct, solver-failure cleanup, a fail-closed probe (an undeclared
-host file must be unreadable), offline signing of the strict SGX manifest
-with a throwaway key, and host-side residue checks (no `.lp`/`.sol`/`.log`
-anywhere after the runs). SGX device/DCAP passthrough must be supplied by the
-deployment environment; the repository does not silently fall back to OFF or
-to the existing SIM path.
+Gramine-direct, solver-failure cleanup, offline signing of the strict SGX
+manifest with a throwaway key, and host-side residue checks (no
+`.lp`/`.sol`/`.log` anywhere after the runs). Runtime fail-closed validation
+still requires SGX hardware. SGX device/DCAP passthrough must be supplied by
+the deployment environment; the repository does not silently fall back to OFF
+or to the existing SIM path.
