@@ -136,6 +136,39 @@ Each point is validated as well as timed: `objective`, `solution`, `ratio` and
 never mixed into the performance samples, and a failing group never aborts the
 run.
 
+### `consistent` is not a pass — `accepted` is
+
+The report carries two different verdicts and they must not be confused:
+
+| field | question it answers |
+| --- | --- |
+| `consistent` | do Native and Gramine-direct **agree**? |
+| `accepted` | did the acceptance **pass**? (this is the exit code) |
+
+Agreement alone is not acceptance, because two modes can agree about having
+failed. Both of these are `consistent: true` and both are `accepted: false`:
+
+- every repetition on both sides times out — the modes "agree" that the status
+  is `timeout`, reported as `agreed_without_samples`;
+- 3 of 10 repetitions survive on each side and those 3 agree — the survivors
+  match, but 7 runs are unaccounted for.
+
+`accepted` requires all of the following, per group and then overall:
+
+1. every repetition of **both** modes succeeded
+   (`successful_runs == repetitions`);
+2. `timeout_runs`, `solver_error_runs`, `infeasible_runs`,
+   `harness_error_runs` and `residue_runs` are all zero;
+3. results are stable *within* each mode (`self_consistent`);
+4. `objective`, `solution`, `ratio` and `optimality_status` agree *across*
+   modes, with real samples on both sides;
+5. the dataset digest was verified (see below).
+
+Failing groups are listed in `rejected_groups` with a per-mode reason string.
+The harness exits `0` only when `accepted` is true, `1` when it is not, and
+`3` when it refused to measure at all (dataset mismatch, or a matrix wider
+than the frozen dataset).
+
 Metrics, per group: `external_wall_time` (measured out-of-process by the
 harness with a monotonic clock), `internal_total_time`
 (`total_runtime_seconds`), `cbc_solver_time` (`cbc_runtime_seconds`) — each
@@ -172,6 +205,18 @@ solver-dominated point cannot be recovered just by picking a larger size.
 off**; `--wall-timeout` (default 600 s), measured out-of-process by the
 harness with a monotonic clock, is the authoritative bound in both modes.
 
+Because it is the only bound, it has to actually stop the work. Each run is
+started in its **own process group** (`start_new_session=True`); on expiry the
+harness signals the whole group — `SIGTERM`, a 5 s grace period, then
+`SIGKILL` — rather than only the direct child. Signalling just the child would
+reap `run_tee_cbc.sh` and leave `gramine-direct` and CBC running: they would
+keep consuming the CPU the next repetition is about to be measured on, and
+keep the encrypted `/work` mount busy. After **every** run, timed out or not,
+the harness sweeps `*.lp`/`*.sol`/`*.log` out of both work directories: a
+killed process cannot have run its own cleanup, and residue after a clean exit
+would mean the RAII cleanup has a hole. Anything swept is recorded in
+`residue_details` and counted in `residue_runs`, which blocks acceptance.
+
 This is not a convenience default. CBC derives its internal limit from
 `CoinCpuTime()`, and Gramine does not report CPU-time clocks relative to the
 process — `CLOCK_PROCESS_CPUTIME_ID` comes back at epoch scale (≈1.79e9 s) and
@@ -203,25 +248,54 @@ Gramine: it is epoch-shifted too, but the benchmark only ever takes
 differences, so `cbc_runtime_seconds` and `total_runtime_seconds` stay valid.)
 
 ```bash
-# full acceptance (builds, prepares the dataset, runs both modes)
+# full acceptance (builds, stages the frozen dataset, runs both modes)
 scripts/run_tee_cbc_benchmark.sh
 
 # or in Docker, behind the `benchmark` profile
-docker compose -f docker/compose.tee-cbc.yaml --profile benchmark up --build \
-  --abort-on-container-exit --exit-code-from tee_cbc_benchmark
+docker compose -f docker/compose.tee-cbc.yaml --profile benchmark run --rm \
+  --build tee_cbc_benchmark
 ```
 
-The dataset is materialised by `tee_cbc/prepare_tee_cbc_data.py` from
-`examples/optimization-demo/sample-costs-410.xlsx`, which has 410 real rows.
-The matrix tops out at 200 rows, so **the acceptance data is 100% real: no
-rows are synthesised** and the provenance record reports
-`"extension": "none", "synthetic_rows": 0`. Row counts are prefix-stable
-(rows=200 is the first 200 lines of the file) and the file carries a sha256
-digest so a later SGX HW run can prove it used the same input.
+`run`, not `up`. `up` also starts the `tee_cbc_direct` regression service, and
+`--abort-on-container-exit` stops every container the moment *any* of them
+exits — so the much shorter regression kills the benchmark mid-matrix
+(SIGKILL, exit 137, after 3 of 12 groups).
 
-The script can still extend past 410 via `--rows` — it resamples whole real
-rows with a fixed seed (915017) plus ±10% jitter and records the result as a
-synthetic extension — but the acceptance no longer uses that path.
+### The dataset is frozen
+
+`tee_cbc/data/costs.tsv` and `tee_cbc/data/costs.provenance.json` are
+**committed inputs**. A benchmark run never regenerates them: it copies the
+frozen file into the Gramine `/input` mount and the harness hashes it against
+the provenance before measuring anything, refusing with exit `3` on a
+mismatch. Regenerating per run would let each result drift away from the
+results it is compared against with nothing in the report showing it.
+
+`tee_cbc/prepare_tee_cbc_data.py` is therefore a **one-time** preparation
+step, not part of the run. It refuses to overwrite an existing `costs.tsv`
+without `--force`:
+
+```bash
+# one-time only; re-freezing invalidates comparability with published results
+tee_cbc/prepare_tee_cbc_data.py examples/optimization-demo/sample-costs-410.xlsx \
+  tee_cbc/data --provenance tee_cbc/data/costs.provenance.json
+```
+
+The frozen file is 410 real rows from
+`examples/optimization-demo/sample-costs-410.xlsx`. The matrix tops out at 200
+rows, so **the acceptance data is 100% real: no rows are synthesised** —
+the provenance reports `"extension": "none", "synthetic_rows": 0` and
+`costs_sha256`
+`0931c4ac98e2897a4fba3248ddeae7a56e3259e074e7c036a62fae5f6ebc99e7`, which a
+later SGX HW run reuses to prove it measured the same input. Row counts are
+prefix-stable: `rows=200` is the first 200 lines of the file.
+
+**Dropping 400/800 from the matrix does not freeze the matrix at 10/200.**
+The frozen dataset bounds it — asking for more rows than the file holds is
+refused (exit `3`) instead of being silently truncated to what is there. To
+benchmark a larger size, prepare a larger dataset once, commit it with its
+provenance, and point `TEE_CBC_DATASET` / `TEE_CBC_DATASET_PROVENANCE` at it.
+Past 410 rows `--rows` resamples whole real rows with a fixed seed (915017)
+plus ±10% jitter and records the result as a synthetic extension.
 
 ## Docker
 

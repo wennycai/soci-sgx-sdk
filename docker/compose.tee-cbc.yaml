@@ -16,8 +16,12 @@ services:
   # plain `up` above still runs only the functional regression.  Gramine-direct
   # is a FUNCTIONAL SIMULATION: results are labelled
   # "Gramine-direct / SIM-functional" and are not SGX HW performance.
-  #   docker compose -f docker/compose.tee-cbc.yaml --profile benchmark up \
-  #     --build --abort-on-container-exit --exit-code-from tee_cbc_benchmark
+  # Use `run`, not `up`: `up` also starts tee_cbc_direct, and
+  # --abort-on-container-exit stops every container as soon as ANY of them
+  # exits, so the much shorter regression tears the benchmark down mid-matrix
+  # (observed: SIGKILL, exit 137, after 3 of 12 groups).
+  #   docker compose -f docker/compose.tee-cbc.yaml --profile benchmark run \
+  #     --rm --build tee_cbc_benchmark
   tee_cbc_benchmark:
     profiles: ["benchmark"]
     build: {context: .., dockerfile: tee_cbc/Dockerfile}
