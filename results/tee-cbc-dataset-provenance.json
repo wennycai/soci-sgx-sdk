@@ -1,0 +1,14 @@
+{
+  "costs_sha256": "0931c4ac98e2897a4fba3248ddeae7a56e3259e074e7c036a62fae5f6ebc99e7",
+  "dataset": "binding",
+  "extension": "none",
+  "jitter": 0.1,
+  "path": "/tmp/tee-cbc-benchmark-data/costs.tsv",
+  "real_rows": 410,
+  "row_counts_are_prefixes": true,
+  "rows": 410,
+  "seed": 915017,
+  "synthetic_rows": 0,
+  "workbook": "/workspace/examples/optimization-demo/sample-costs-410.xlsx",
+  "workbook_sha256": "cd65a41a6ef68eadd69424379da2d24b832f31816227937c663c1feb11d1f35b"
+}
