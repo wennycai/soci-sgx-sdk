@@ -59,8 +59,13 @@ int main(int argc, char** argv) try {
   if (argc < 4 || argc > 5) throw std::runtime_error("usage: cbc-baseline TSV ROWS THRESHOLD [TIMEOUT_SECONDS]");
   const auto rows = read_tsv(argv[1], std::stoull(argv[2]));
   const double threshold = std::stod(argv[3]);
-  const int timeout_seconds = argc == 5 ? std::stoi(argv[4]) : 60;
-  if (timeout_seconds <= 0) throw std::runtime_error("timeout must be positive");
+  // TIMEOUT_SECONDS == 0 means "do not impose CBC's internal time limit"; the
+  // caller must then bound the run out-of-process.  Required wherever CBC's
+  // CoinCpuTime() is not process-relative (Gramine reports epoch-scale CPU
+  // clocks), because there any finite limit reads as already exhausted at
+  // startup and CBC aborts in preprocessing with a bogus infeasibility.
+  const long long timeout_seconds = argc == 5 ? std::stoll(argv[4]) : 60;
+  if (timeout_seconds < 0) throw std::runtime_error("timeout must not be negative");
   const auto start = std::chrono::steady_clock::now();
   std::size_t variables = 0;
   for (const auto& row : rows) for (const auto& cost : row.cost) if (cost) ++variables;
@@ -119,7 +124,14 @@ int main(int argc, char** argv) try {
   const char* cbc = std::getenv("SOCI_CBC_COMMAND");
   const std::string runner = cbc && *cbc ? cbc : "cbc";
   const auto cbc_start = std::chrono::steady_clock::now();
-  const std::string command = runner + " " + lp + " seconds " + std::to_string(timeout_seconds) +
+  const std::string limit = timeout_seconds > 0
+      ? " seconds " + std::to_string(timeout_seconds) : std::string();
+  // "-log 0" silences CBC's message handler.  Required: its fixed-size message
+  // buffer overflows (glibc _FORTIFY_SOURCE abort) once the model is large
+  // enough, because the timings it formats come from CPU clocks that are not
+  // process-relative under Gramine.  Applied in every mode so that native and
+  // Gramine-direct run the identical solver configuration.
+  const std::string command = runner + " " + lp + " -log 0" + limit +
                               " solve solu " + sol + " >" + log + " 2>&1";
   const int rc = std::system(command.c_str());
   const double cbc_seconds = std::chrono::duration<double>(
@@ -170,13 +182,37 @@ int main(int argc, char** argv) try {
     print_failure("solver_error");
     return 0;
   }
+  // CBC states its outcome on the header line.  Only "Optimal - objective
+  // value X" carries a solution: "Integer infeasible - objective value X" and
+  // "Stopped on time (no integer solution - continuous used) - objective
+  // value X" report the *relaxation bound*, not a feasible point.  Accepting
+  // any line containing "objective value" would round that fractional bound
+  // into a fabricated one-hot selection below and abort on the ratio/objective
+  // validators, instead of reporting a clean solver status.
+  const char* sol_status = nullptr;
   while (std::getline(input, line)) {
     const auto marker = line.find("objective value");
     if (marker != std::string::npos) {
-      objective = std::stod(line.substr(marker + 15));
-      found_objective = true;
+      if (line.rfind("Optimal", 0) == 0) {
+        objective = std::stod(line.substr(marker + 15));
+        found_objective = true;
+      } else if (line.rfind("Stopped on", 0) == 0) {
+        // May carry an incumbent, but it is never proven optimal.
+        sol_status = "timeout";
+      } else if (line.rfind("Infeasible", 0) == 0 ||
+                 line.rfind("Integer infeasible", 0) == 0) {
+        // A proven property of the model, not a solver malfunction.  Kept
+        // distinct so that solver_error stays a pure environment-fault counter.
+        sol_status = "infeasible";
+      } else {
+        sol_status = "solver_error";
+      }
       continue;
     }
+    // The header already said there is no usable solution.  Do not parse the
+    // variable lines: they hold a fractional relaxation whose rounding can
+    // trip the duplicate-selection guard below before the status is reported.
+    if (sol_status) continue;
     std::stringstream variable(line);
     std::string index, name;
     double value = 0;
@@ -189,6 +225,10 @@ int main(int argc, char** argv) try {
     if (row >= rows.size() || method < 0 || method >= 3 || selected[row] != -1)
       throw std::runtime_error("CBC solution has invalid or duplicate selection");
     selected[row] = method;
+  }
+  if (sol_status) {
+    print_failure(sol_status);
+    return 0;
   }
   if (!found_objective) {
     print_failure("solver_error");

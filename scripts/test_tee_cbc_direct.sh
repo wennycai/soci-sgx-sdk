@@ -88,10 +88,19 @@ json_check "$(SOCI_CBC_TMPDIR="$TMP" SOCI_CBC_COMMAND="$FAKE/fake_timeout.sh" "$
 [[ -z $(find "$TMP" -type f -print -quit) ]]
 rm -rf "$TMP" "$FAKE"
 
+# TIMEOUT=0 (CBC's internal "seconds" limit disabled) is mandatory under
+# Gramine and is now enforced by run_tee_cbc.sh.  CBC takes that limit from
+# CoinCpuTime(), which Gramine does not report relative to the process, so a
+# finite limit reads as already exhausted and CBC emits its root relaxation
+# under an "Integer infeasible" header.  These cases previously passed `60`
+# and still went green only because the old .sol parser ignored the header:
+# on this instance the relaxation happens to be integral and optimal, so
+# rounding it reproduced the right answer by luck.  The parser no longer
+# accepts a failure header, which makes the wrong time limit visible here.
 echo "== gramine-direct: CBC Exact path"
 cp "$DATA/costs_exact.tsv" "$DATA/costs.tsv"
 result=$(TEE_CBC_DATA_DIR="$DATA" TEE_CBC_OUT="$OUT" \
-  "$ROOT/tee_cbc/run_tee_cbc.sh" direct 6 0.5 60)
+  "$ROOT/tee_cbc/run_tee_cbc.sh" direct 6 0.5 0)
 python3 -c 'import json,sys
 d = json.loads(sys.argv[1])
 assert d["optimality_status"] == "optimal_verified", d
@@ -102,7 +111,7 @@ assert_no_residue
 echo "== gramine-direct: cheapest fast path"
 cp "$DATA/costs_fast.tsv" "$DATA/costs.tsv"
 result=$(TEE_CBC_DATA_DIR="$DATA" TEE_CBC_OUT="$OUT" \
-  "$ROOT/tee_cbc/run_tee_cbc.sh" direct 3 0.5 60)
+  "$ROOT/tee_cbc/run_tee_cbc.sh" direct 3 0.5 0)
 python3 -c 'import json,sys
 d = json.loads(sys.argv[1])
 assert d["optimality_status"] == "cheapest_global_optimum", d
@@ -113,7 +122,7 @@ assert_no_residue
 echo "== gramine-direct: solver failure path cleans up"
 cp "$DATA/costs_exact.tsv" "$DATA/costs.tsv"
 result=$(SOCI_CBC_COMMAND=/bin/false TEE_CBC_DATA_DIR="$DATA" TEE_CBC_OUT="$OUT" \
-  "$ROOT/tee_cbc/run_tee_cbc.sh" direct 6 0.5 60)
+  "$ROOT/tee_cbc/run_tee_cbc.sh" direct 6 0.5 0)
 json_check "$result" solver_error
 assert_no_residue
 
