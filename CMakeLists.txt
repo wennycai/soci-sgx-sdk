@@ -70,6 +70,18 @@ target_link_libraries(soci_scalable_optimizer_benchmark PRIVATE soci_sdk)
 add_executable(soci_cbc_plaintext_benchmark EXCLUDE_FROM_ALL
   benchmark/cbc_baseline.cpp)
 
+# Isolated plaintext prototype for the structured Exact solver.  These targets
+# are deliberately excluded from normal production/CI chains.
+add_library(soci_structured_exact_solver EXCLUDE_FROM_ALL
+  benchmark/structured_exact_solver.cpp)
+target_include_directories(soci_structured_exact_solver PUBLIC benchmark)
+add_executable(soci_structured_exact_benchmark EXCLUDE_FROM_ALL
+  benchmark/structured_exact.cpp)
+target_link_libraries(soci_structured_exact_benchmark PRIVATE soci_structured_exact_solver)
+add_executable(soci_structured_exact_test EXCLUDE_FROM_ALL
+  tests/test_structured_exact.cpp)
+target_link_libraries(soci_structured_exact_test PRIVATE soci_structured_exact_solver)
+
 if(SOCI_BUILD_PYTHON)
   find_package(pybind11 CONFIG QUIET)
   if(pybind11_FOUND)
