@@ -11,3 +11,21 @@ services:
     security_opt:
       - seccomp=unconfined
     command: ["bash","-lc","scripts/test_tee_cbc_direct.sh"]
+
+  # Native vs Gramine-direct performance acceptance.  Behind a profile so the
+  # plain `up` above still runs only the functional regression.  Gramine-direct
+  # is a FUNCTIONAL SIMULATION: results are labelled
+  # "Gramine-direct / SIM-functional" and are not SGX HW performance.
+  #   docker compose -f docker/compose.tee-cbc.yaml --profile benchmark up \
+  #     --build --abort-on-container-exit --exit-code-from tee_cbc_benchmark
+  tee_cbc_benchmark:
+    profiles: ["benchmark"]
+    build: {context: .., dockerfile: tee_cbc/Dockerfile}
+    environment:
+      CBC_BIN: /usr/bin/cbc
+      TEE_CBC_RESULTS: /results/tee-cbc-benchmark-gramine-direct.json
+    security_opt:
+      - seccomp=unconfined
+    volumes:
+      - ../results:/results
+    command: ["bash","-lc","scripts/run_tee_cbc_benchmark.sh"]
